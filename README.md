@@ -340,9 +340,3 @@ sync, session sweep) run natively here — the `/api/cron/*` endpoints are simpl
   exact response shape has since changed.
 - **Email and CRM mirroring are off by default.** Both need credentials; until they're
   set, follow-ups queue in the dashboard and nothing is mirrored.
-
-## License
-
-Proprietary — Abacus Digital
-#   a b a c u s - c h a t b o t  
- 
