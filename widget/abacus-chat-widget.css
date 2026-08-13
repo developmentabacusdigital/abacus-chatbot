@@ -1,0 +1,974 @@
+/* ===================================================
+   Abacus Digital Chat Widget — White & Blue
+   Palette sampled from abacusdigital.net:
+     #0099FF primary · #007DEF / #0684C7 deep · #004C88 darkest
+     #FFFFFF surface · #171717 text
+   Spacing runs on a 4px scale (4 / 8 / 12 / 16 / 20 / 24).
+   Typeface: Outfit — 300 (light) for secondary/meta text, 400 (regular) for
+   body copy, 500 (medium) for labels, buttons and emphasis. Motion is layered:
+   CSS transitions/keyframes are the always-on baseline; when the widget script
+   loads GSAP it adds the `.abacus-gsap` class to the root, which this file uses
+   to hand entrance animation over to JS so the two never fight each other.
+   =================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap');
+
+:root {
+    /* Brand */
+    --abacus-primary: #0099FF;
+    --abacus-primary-hover: #007DEF;
+    --abacus-primary-deep: #0684C7;
+    --abacus-primary-darkest: #004C88;
+    --abacus-primary-soft: #E8F4FF;
+    --abacus-primary-softer: #F4FAFF;
+
+    /* Surfaces */
+    --abacus-surface: #FFFFFF;
+    --abacus-surface-sunken: #F6F8FA;
+    --abacus-surface-hover: #EDF5FC;
+
+    /* Text */
+    --abacus-text: #171717;
+    --abacus-text-secondary: #5A6472;
+    --abacus-text-muted: #8B95A3;
+    --abacus-text-on-primary: #FFFFFF;
+
+    /* Lines */
+    --abacus-border: #E9EDF1;
+    --abacus-border-strong: #D8DFE6;
+    --abacus-focus-ring: rgba(0, 153, 255, 0.18);
+
+    /* Bubbles */
+    --abacus-bot-bubble: #F4F5F7;
+    --abacus-user-bubble: linear-gradient(135deg, #0099FF, #007DEF);
+
+    /* Elevation — blue-tinted so shadows sit in the palette */
+    --abacus-shadow-sm: 0 1px 2px rgba(16, 45, 74, 0.06);
+    --abacus-shadow: 0 6px 20px rgba(16, 45, 74, 0.10);
+    --abacus-shadow-lg: 0 20px 56px rgba(16, 45, 74, 0.14);
+    --abacus-shadow-primary: 0 6px 18px rgba(0, 153, 255, 0.32);
+
+    /* Geometry — generous, uniform rounding for a soft, minimal feel */
+    --abacus-radius: 20px;
+    --abacus-radius-sm: 16px;
+    --abacus-radius-xs: 10px;
+
+    /* Spacing scale */
+    --abacus-gap-xs: 4px;
+    --abacus-gap-sm: 8px;
+    --abacus-gap: 12px;
+    --abacus-gap-md: 16px;
+    --abacus-gap-lg: 20px;
+    --abacus-gap-xl: 24px;
+
+    --abacus-transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    --abacus-font: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ---- Reset, scoped to the widget ----
+   This used to zero margin/padding in the same ID-anchored rule as box-sizing/font.
+   An ID selector outranks any number of classes in CSS specificity, so that single
+   rule was silently winning over every later padding/margin declaration in this file
+   — bubble padding, paragraph spacing, list indentation, chip padding, all of it —
+   regardless of where those rules sat in the cascade. :where() forces the specificity
+   of whatever selector list it wraps to zero, so wrapping the ID here (not just the
+   `*`) is what actually neutralizes it; any later rule with so much as one class now
+   wins normally through the cascade. */
+#abacus-chat-widget,
+#abacus-chat-widget *,
+#abacus-chat-widget *::before,
+#abacus-chat-widget *::after {
+    box-sizing: border-box;
+    font-family: var(--abacus-font);
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+}
+
+:where(#abacus-chat-widget, #abacus-chat-widget *) {
+    margin: 0;
+    padding: 0;
+}
+
+#abacus-chat-widget {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 999999;
+    line-height: 1.5;
+    color: var(--abacus-text);
+}
+
+/* ===================================================
+   Floating trigger
+   =================================================== */
+
+.abacus-trigger {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 60px;
+    border: none;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--abacus-primary), var(--abacus-primary-deep));
+    box-shadow: var(--abacus-shadow-primary);
+    cursor: pointer;
+    transition: var(--abacus-transition);
+    margin-left: auto;
+}
+
+.abacus-trigger:hover {
+    transform: translateY(-2px) scale(1.04);
+    box-shadow: 0 10px 26px rgba(0, 153, 255, 0.42);
+}
+
+.abacus-trigger:focus-visible {
+    outline: 3px solid var(--abacus-focus-ring);
+    outline-offset: 3px;
+}
+
+.abacus-trigger:active {
+    transform: translateY(0) scale(0.98);
+}
+
+.abacus-trigger svg {
+    position: absolute;
+    width: 26px;
+    height: 26px;
+    fill: var(--abacus-text-on-primary);
+    transition: var(--abacus-transition);
+}
+
+.abacus-trigger .chat-icon {
+    opacity: 1;
+    transform: rotate(0) scale(1);
+}
+
+.abacus-trigger .close-icon {
+    opacity: 0;
+    transform: rotate(-90deg) scale(0.5);
+}
+
+.abacus-trigger.open .chat-icon {
+    opacity: 0;
+    transform: rotate(90deg) scale(0.5);
+}
+
+.abacus-trigger.open .close-icon {
+    opacity: 1;
+    transform: rotate(0) scale(1);
+}
+
+/* Soft pulse to draw the eye, once the page has settled */
+.abacus-trigger::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px solid var(--abacus-primary);
+    opacity: 0;
+    animation: abacus-pulse 2.8s ease-out 3s infinite;
+}
+
+.abacus-trigger.open::after {
+    animation: none;
+}
+
+@keyframes abacus-pulse {
+    0%   { transform: scale(1);    opacity: 0.55; }
+    100% { transform: scale(1.55); opacity: 0; }
+}
+
+.abacus-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: #FF4757;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 20px;
+    text-align: center;
+    box-shadow: var(--abacus-shadow-sm);
+}
+
+/* ===================================================
+   Chat window
+   =================================================== */
+
+.abacus-chat-window {
+    position: absolute;
+    bottom: 76px;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    width: 384px;
+    height: 620px;
+    max-height: calc(100vh - 120px);
+    background: var(--abacus-surface);
+    border: 1px solid var(--abacus-border);
+    border-radius: var(--abacus-radius);
+    box-shadow: var(--abacus-shadow-lg);
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(16px) scale(0.97);
+    transform-origin: bottom right;
+    transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.25s;
+}
+
+.abacus-chat-window.open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+}
+
+/* Once GSAP is driving the open/close motion in JS, let it fully own opacity,
+   transform and visibility so the CSS transition never fights the tween. */
+#abacus-chat-widget.abacus-gsap .abacus-chat-window {
+    transition: none;
+}
+
+/* ---- Header ---- */
+
+.abacus-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    padding: var(--abacus-gap) var(--abacus-gap-sm) var(--abacus-gap) var(--abacus-gap-md);
+    background: var(--abacus-surface);
+    border-bottom: 1px solid var(--abacus-border);
+}
+
+.abacus-header-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.abacus-header-title {
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--abacus-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.abacus-header-status {
+    margin-top: 2px;
+    font-size: 12px;
+    font-weight: 300;
+    color: var(--abacus-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.abacus-header-status:empty {
+    display: none;
+}
+
+.abacus-header-close,
+.abacus-back-btn,
+.abacus-newchat-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--abacus-text-secondary);
+    cursor: pointer;
+    transition: var(--abacus-transition);
+}
+
+.abacus-header-close:hover,
+.abacus-back-btn:hover,
+.abacus-newchat-btn:hover {
+    background: var(--abacus-surface-hover);
+    color: var(--abacus-text);
+}
+
+.abacus-header-close:active,
+.abacus-back-btn:active,
+.abacus-newchat-btn:active {
+    transform: scale(0.92);
+}
+
+.abacus-header-close:focus-visible,
+.abacus-back-btn:focus-visible,
+.abacus-newchat-btn:focus-visible {
+    outline: 2px solid var(--abacus-focus-ring);
+    outline-offset: 1px;
+}
+
+/* ===================================================
+   Chat list panel (public mode "Chats" home screen)
+   =================================================== */
+
+.abacus-chatlist {
+    display: none;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    background: var(--abacus-surface);
+}
+
+.abacus-chatlist-new {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--abacus-gap-sm);
+    flex-shrink: 0;
+    margin: var(--abacus-gap-md);
+    padding: 12px var(--abacus-gap-md);
+    border: 1px dashed var(--abacus-border-strong);
+    border-radius: var(--abacus-radius-sm);
+    background: var(--abacus-surface-sunken);
+    color: var(--abacus-primary-darkest);
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--abacus-transition);
+}
+
+.abacus-chatlist-new:hover {
+    background: var(--abacus-primary-soft);
+    border-color: var(--abacus-primary);
+}
+
+.abacus-chatlist-rows {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 var(--abacus-gap-sm) var(--abacus-gap-md);
+}
+
+.abacus-chatlist-empty {
+    padding: var(--abacus-gap-xl) var(--abacus-gap-md);
+    text-align: center;
+    font-size: 13px;
+    font-weight: 300;
+    color: var(--abacus-text-muted);
+}
+
+.abacus-chatlist-row {
+    display: block;
+    width: 100%;
+    padding: var(--abacus-gap) var(--abacus-gap-sm);
+    margin-bottom: 2px;
+    border: none;
+    border-radius: var(--abacus-radius-xs);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: var(--abacus-transition);
+}
+
+.abacus-chatlist-row:hover {
+    background: var(--abacus-surface-hover);
+}
+
+.abacus-chatlist-row-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--abacus-gap-sm);
+}
+
+.abacus-chatlist-title {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--abacus-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.abacus-chatlist-time {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 300;
+    color: var(--abacus-text-muted);
+}
+
+.abacus-chatlist-snippet {
+    margin-top: 3px;
+    font-size: 12.5px;
+    font-weight: 300;
+    line-height: 1.4;
+    color: var(--abacus-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- Consent notice ---- */
+
+.abacus-consent {
+    display: none;
+    align-items: flex-start;
+    gap: var(--abacus-gap-sm);
+    flex-shrink: 0;
+    padding: 10px var(--abacus-gap-md);
+    background: var(--abacus-primary-softer);
+    border-bottom: 1px solid var(--abacus-border);
+    font-size: 12px;
+    font-weight: 300;
+    line-height: 1.5;
+    color: var(--abacus-text-secondary);
+}
+
+.abacus-consent.visible {
+    display: flex;
+}
+
+.abacus-consent-icon {
+    flex-shrink: 0;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* ---- Messages ---- */
+
+.abacus-messages {
+    flex: 1;
+    min-height: 0;
+    padding: var(--abacus-gap-md);
+    background: var(--abacus-surface);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scroll-behavior: smooth;
+}
+
+.abacus-messages::-webkit-scrollbar {
+    width: 6px;
+}
+
+.abacus-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.abacus-messages::-webkit-scrollbar-thumb {
+    border-radius: 3px;
+    background: var(--abacus-border-strong);
+}
+
+.abacus-messages::-webkit-scrollbar-thumb:hover {
+    background: var(--abacus-text-muted);
+}
+
+.abacus-message {
+    display: flex;
+    margin-bottom: var(--abacus-gap-md);
+    animation: abacus-message-in 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.abacus-message:last-child {
+    margin-bottom: 0;
+}
+
+.abacus-message.user {
+    justify-content: flex-end;
+}
+
+.abacus-message.bot {
+    justify-content: flex-start;
+}
+
+/* Once GSAP is present it animates each new message in directly (see the JS
+   entrance tween); restored/cached history is rendered instantly either way. */
+#abacus-chat-widget.abacus-gsap .abacus-message {
+    animation: none;
+}
+
+@keyframes abacus-message-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.abacus-msg-content {
+    max-width: 80%;
+    padding: 12px var(--abacus-gap-md);
+    border-radius: var(--abacus-radius-sm);
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.55;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+}
+
+.abacus-message.bot .abacus-msg-content {
+    background: var(--abacus-bot-bubble);
+    color: var(--abacus-text);
+}
+
+.abacus-message.user .abacus-msg-content {
+    background: var(--abacus-user-bubble);
+    border-radius: 22px;
+    color: var(--abacus-text-on-primary);
+    box-shadow: var(--abacus-shadow-sm);
+}
+
+.abacus-msg-label {
+    margin-bottom: 4px;
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: var(--abacus-primary-deep);
+}
+
+/* ---- Rich content inside a bubble ----
+   Paragraphs and lists share one spacing unit (8px) between blocks, and the last
+   block in a bubble carries no trailing margin — that, plus the renderer emitting
+   real <p>/<ul> blocks instead of raw <br><br>, is what keeps a multi-part answer
+   from ballooning into the oversized, uneven gaps a chain of <br> tags produces. */
+
+.abacus-msg-content strong {
+    font-weight: 500;
+}
+
+.abacus-msg-content a {
+    color: var(--abacus-primary-darkest);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.abacus-msg-content a:hover {
+    color: var(--abacus-primary-hover);
+}
+
+.abacus-message.user .abacus-msg-content a {
+    color: var(--abacus-text-on-primary);
+}
+
+.abacus-msg-content p {
+    margin: 0 0 var(--abacus-gap-sm);
+}
+
+.abacus-msg-content p:last-child {
+    margin-bottom: 0;
+}
+
+.abacus-msg-content ul {
+    margin: 0 0 var(--abacus-gap-sm);
+    padding-left: 18px;
+    list-style: none;
+}
+
+.abacus-msg-content ul:last-child {
+    margin-bottom: 0;
+}
+
+.abacus-msg-content li {
+    position: relative;
+    margin-bottom: 4px;
+}
+
+.abacus-msg-content li:last-child {
+    margin-bottom: 0;
+}
+
+.abacus-msg-content li::before {
+    content: '';
+    position: absolute;
+    left: -13px;
+    top: 8px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--abacus-primary);
+}
+
+.abacus-message.user .abacus-msg-content li::before {
+    background: rgba(255, 255, 255, 0.75);
+}
+
+/* ---- Source citation: one discreet link, not a row of chips ---- */
+
+.abacus-source-link {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--abacus-border-strong);
+    font-size: 11.5px;
+    font-weight: 300;
+    line-height: 1.4;
+}
+
+.abacus-source-link a {
+    color: var(--abacus-primary-darkest);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.abacus-source-link a:hover {
+    text-decoration: underline;
+}
+
+/* ---- Suggestion chips (attached under a bot question with a finite answer set) ---- */
+
+.abacus-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--abacus-gap-sm);
+    margin: 2px 0 var(--abacus-gap-md) 0;
+    animation: abacus-message-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#abacus-chat-widget.abacus-gsap .abacus-suggestions {
+    animation: none;
+}
+
+.abacus-suggestion-btn {
+    padding: 8px 14px;
+    border: 1px solid var(--abacus-border-strong);
+    border-radius: 20px;
+    background: var(--abacus-surface);
+    color: var(--abacus-primary-darkest);
+    font-size: 12.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: var(--abacus-transition);
+}
+
+.abacus-suggestion-btn:hover {
+    background: var(--abacus-primary-soft);
+    border-color: var(--abacus-primary);
+    color: var(--abacus-primary-hover);
+}
+
+.abacus-suggestion-btn:active {
+    transform: scale(0.96);
+}
+
+.abacus-suggestion-btn:focus-visible {
+    outline: 2px solid var(--abacus-focus-ring);
+    outline-offset: 1px;
+}
+
+/* ---- Booking call-to-action ---- */
+
+.abacus-booking-btn {
+    display: block;
+    margin-top: var(--abacus-gap);
+    padding: 12px var(--abacus-gap-md);
+    border-radius: var(--abacus-radius-xs);
+    background: linear-gradient(135deg, var(--abacus-primary), var(--abacus-primary-deep));
+    color: var(--abacus-text-on-primary) !important;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    text-decoration: none !important;
+    box-shadow: var(--abacus-shadow-sm);
+    transition: var(--abacus-transition);
+}
+
+.abacus-booking-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--abacus-shadow-primary);
+}
+
+/* ---- Typing indicator ---- */
+
+.abacus-typing {
+    display: none;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+    width: fit-content;
+    margin: 0 var(--abacus-gap-md) var(--abacus-gap-md);
+    padding: 14px var(--abacus-gap-md);
+    border-radius: var(--abacus-radius-sm);
+    background: var(--abacus-bot-bubble);
+}
+
+.abacus-typing.active {
+    display: flex;
+}
+
+.abacus-typing-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--abacus-text-muted);
+    animation: abacus-typing 1.4s ease-in-out infinite;
+}
+
+.abacus-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.abacus-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes abacus-typing {
+    0%, 60%, 100% { transform: translateY(0);    opacity: 0.35; }
+    30%           { transform: translateY(-5px); opacity: 1; }
+}
+
+/* ---- Quick actions ---- */
+
+.abacus-quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--abacus-gap-sm);
+    flex-shrink: 0;
+    padding: 0 var(--abacus-gap-md) var(--abacus-gap);
+    background: var(--abacus-surface);
+}
+
+.abacus-quick-btn {
+    padding: 8px 14px;
+    border: 1px solid var(--abacus-border-strong);
+    border-radius: 20px;
+    background: var(--abacus-surface);
+    color: var(--abacus-primary-darkest);
+    font-size: 12.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: var(--abacus-transition);
+}
+
+.abacus-quick-btn:hover {
+    background: var(--abacus-primary-soft);
+    border-color: var(--abacus-primary);
+    color: var(--abacus-primary-hover);
+}
+
+.abacus-quick-btn:active {
+    transform: scale(0.96);
+}
+
+.abacus-quick-btn:focus-visible {
+    outline: 2px solid var(--abacus-focus-ring);
+    outline-offset: 1px;
+}
+
+/* ---- Input ---- */
+
+.abacus-input-area {
+    flex-shrink: 0;
+    padding: var(--abacus-gap) var(--abacus-gap-md) var(--abacus-gap-sm);
+    background: var(--abacus-surface);
+    border-top: 1px solid var(--abacus-border);
+}
+
+.abacus-input-row {
+    display: flex;
+    align-items: center;
+    gap: var(--abacus-gap-sm);
+}
+
+.abacus-input {
+    flex: 1;
+    min-height: 44px;
+    max-height: 100px;
+    padding: 12px 18px;
+    border: 1px solid var(--abacus-border-strong);
+    border-radius: 24px;
+    background: var(--abacus-surface-sunken);
+    color: var(--abacus-text);
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.4;
+    resize: none;
+    overflow-y: auto;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.abacus-input::placeholder {
+    color: var(--abacus-text-muted);
+    font-weight: 300;
+}
+
+.abacus-input:focus {
+    outline: none;
+    background: var(--abacus-surface);
+    border-color: var(--abacus-primary);
+    box-shadow: 0 0 0 3px var(--abacus-focus-ring);
+}
+
+.abacus-send-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--abacus-primary), var(--abacus-primary-deep));
+    cursor: pointer;
+    transition: var(--abacus-transition);
+}
+
+.abacus-send-btn svg {
+    width: 17px;
+    height: 17px;
+    stroke: var(--abacus-text-on-primary);
+}
+
+.abacus-send-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--abacus-shadow-primary);
+}
+
+.abacus-send-btn:active:not(:disabled) {
+    transform: scale(0.92);
+}
+
+.abacus-send-btn:focus-visible {
+    outline: 2px solid var(--abacus-focus-ring);
+    outline-offset: 2px;
+}
+
+.abacus-send-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.abacus-powered {
+    margin-top: var(--abacus-gap-sm);
+    font-size: 11px;
+    font-weight: 300;
+    text-align: center;
+    color: var(--abacus-text-muted);
+}
+
+.abacus-powered a {
+    color: var(--abacus-primary-deep);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.abacus-powered a:hover {
+    text-decoration: underline;
+}
+
+/* ===================================================
+   Client sign-in panel (Phase 3)
+   =================================================== */
+
+.abacus-login {
+    flex-shrink: 0;
+    padding: var(--abacus-gap-lg) var(--abacus-gap-md);
+    background: var(--abacus-primary-softer);
+    border-bottom: 1px solid var(--abacus-border);
+}
+
+.abacus-login-title {
+    margin-bottom: var(--abacus-gap-xs);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--abacus-text);
+}
+
+.abacus-login-copy {
+    margin-bottom: var(--abacus-gap);
+    font-size: 13px;
+    font-weight: 300;
+    line-height: 1.55;
+    color: var(--abacus-text-secondary);
+}
+
+.abacus-login-input {
+    width: 100%;
+    min-height: 44px;
+    margin-bottom: var(--abacus-gap-sm);
+    padding: 12px 16px;
+    border: 1px solid var(--abacus-border-strong);
+    border-radius: var(--abacus-radius-sm);
+    background: var(--abacus-surface);
+    color: var(--abacus-text);
+    font-size: 14px;
+    font-weight: 400;
+    resize: none;
+}
+
+.abacus-login-input:focus {
+    outline: none;
+    border-color: var(--abacus-primary);
+    box-shadow: 0 0 0 3px var(--abacus-focus-ring);
+}
+
+.abacus-login-btn {
+    width: 100%;
+    padding: 12px var(--abacus-gap-md);
+    border: none;
+    border-radius: var(--abacus-radius-sm);
+    background: linear-gradient(135deg, var(--abacus-primary), var(--abacus-primary-deep));
+    color: var(--abacus-text-on-primary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--abacus-transition);
+}
+
+.abacus-login-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--abacus-shadow-primary);
+}
+
+.abacus-login-btn:focus-visible {
+    outline: 2px solid var(--abacus-focus-ring);
+    outline-offset: 2px;
+}
+
+.abacus-login-msg {
+    min-height: 18px;
+    margin-top: var(--abacus-gap-sm);
+    font-size: 12.5px;
+    font-weight: 300;
+    line-height: 1.5;
+    color: var(--abacus-text-secondary);
+}
+
+/* ===================================================
+   Responsive
+   =================================================== */
+
+@media (max-width: 480px) {
+    #abacus-chat-widget {
+        bottom: 16px;
+        right: 16px;
+    }
+
+    .abacus-chat-window {
+        position: fixed;
+        bottom: 84px;
+        right: 16px;
+        left: 16px;
+        width: auto;
+        height: calc(100vh - 116px);
+        max-height: none;
+    }
+
+    .abacus-trigger {
+        width: 54px;
+        height: 54px;
+    }
+
+    .abacus-msg-content {
+        max-width: 86%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #abacus-chat-widget *,
+    #abacus-chat-widget *::before,
+    #abacus-chat-widget *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

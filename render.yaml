@@ -1,0 +1,57 @@
+# Render blueprint — free tier. An alternative to Vercel: same codebase, same Neon
+# Postgres database, just a different (always-on-while-warm) host. Since storage moved
+# to Neon, there's no local disk to mount anymore — Render's free instance spins down
+# after ~15 minutes idle either way, so the first message after a quiet period pays a
+# cold start regardless of which host runs it.
+
+services:
+  - type: web
+    name: abacus-chatbot
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: ADMIN_API_KEY
+        generateValue: true
+      - key: CRON_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://www.abacusdigital.net,https://abacusdigital.net
+      - key: CALENDLY_URL
+        value: https://calendly.com/abacusdigital/discovery
+      - key: SITE_BASE_URL
+        value: https://www.abacusdigital.net
+      - key: CRAWL_ENABLED
+        value: "true"
+      - key: REINDEX_INTERVAL_HOURS
+        value: "24"
+      - key: EMAIL_PROVIDER
+        value: none
+      - key: RESEND_API_KEY
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_REQUIRE_APPROVAL
+        value: "true"
+      - key: CRM_PROVIDER
+        value: none
+      - key: AIRTABLE_API_KEY
+        sync: false
+      - key: AIRTABLE_BASE_ID
+        sync: false
+      - key: HUBSPOT_ACCESS_TOKEN
+        sync: false
+      - key: CLIENT_PORTAL_URL
+        value: https://www.abacusdigital.net/client
+      - key: ACCOUNT_MANAGER_EMAIL
+        value: accounts@abacusdigital.net

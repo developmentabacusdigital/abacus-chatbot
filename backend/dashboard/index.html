@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Abacus Digital — Lead Dashboard</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #14181d;
+    --panel-2: #1b2027;
+    --border: #262d36;
+    --text: #e8ecf1;
+    --muted: #8b95a3;
+    --accent: #4f8cff;
+    --good: #35c88a;
+    --warn: #f0b429;
+    --bad: #f0566d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 18px 24px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+  header .spacer { flex: 1; }
+  input, button, select {
+    font: inherit; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text); padding: 8px 12px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+  nav { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+  nav button { background: transparent; }
+  nav button.active { background: var(--panel-2); border-color: var(--accent); color: var(--accent); }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .metric { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .metric .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .metric .value { font-size: 24px; font-weight: 600; margin-top: 6px; letter-spacing: -0.02em; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  tr.clickable:hover { background: var(--panel-2); cursor: pointer; }
+  .score { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .score.high { background: rgba(53,200,138,.15); color: var(--good); }
+  .score.mid { background: rgba(240,180,41,.15); color: var(--warn); }
+  .score.low { background: rgba(240,86,109,.15); color: var(--bad); }
+  .muted { color: var(--muted); }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+  .hidden { display: none; }
+  dialog {
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 14px; max-width: 780px; width: 92%; padding: 0;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  .dialog-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+  .dialog-body { padding: 20px; max-height: 65vh; overflow: auto; }
+  .turn { margin-bottom: 14px; }
+  .turn .role { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .turn.user .role { color: var(--accent); }
+  pre { white-space: pre-wrap; word-break: break-word; font: inherit; margin: 4px 0 0; }
+  .brief { background: var(--panel-2); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .status-msg { padding: 10px 14px; border-radius: 8px; background: var(--panel-2); margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Abacus Digital — Lead Dashboard</h1>
+  <div class="spacer"></div>
+  <input id="key" type="password" placeholder="Admin API key" style="width:240px">
+  <button class="primary" id="connect">Connect</button>
+</header>
+
+<main>
+  <div id="status" class="status-msg muted">Enter your admin API key to load data.</div>
+
+  <div id="app" class="hidden">
+    <div class="metrics" id="metrics"></div>
+
+    <nav>
+      <button data-view="leads" class="active">Leads</button>
+      <button data-view="briefs">Project Briefs</button>
+      <button data-view="emails">Email Queue</button>
+      <button data-view="escalations">Escalations</button>
+    </nav>
+
+    <div class="toolbar">
+      <button id="refresh">Refresh</button>
+      <button id="export">Export CSV</button>
+      <button id="reindex">Re-index site content</button>
+      <button id="crmsync">Sync to CRM</button>
+    </div>
+
+    <div class="panel"><div id="view"></div></div>
+  </div>
+</main>
+
+<dialog id="detail">
+  <div class="dialog-head">
+    <strong id="detail-title">Session</strong>
+    <div style="flex:1"></div>
+    <button onclick="document.getElementById('detail').close()">Close</button>
+  </div>
+  <div class="dialog-body" id="detail-body"></div>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let apiKey = sessionStorage.getItem('abacus_admin_key') || '';
+let currentView = 'leads';
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+  ));
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    ...options,
+    headers: { 'X-Admin-Key': apiKey, 'Content-Type': 'application/json', ...(options.headers || {}) },
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+  return res.json();
+}
+
+function setStatus(msg, isError) {
+  $('status').textContent = msg;
+  $('status').style.color = isError ? 'var(--bad)' : 'var(--muted)';
+}
+
+function scoreClass(s) { return s >= 0.6 ? 'high' : s >= 0.35 ? 'mid' : 'low'; }
+
+async function loadMetrics() {
+  const m = await api('/api/admin/metrics');
+  const tiles = [
+    ['Sessions', m.total_sessions],
+    ['Leads', m.total_leads],
+    ['Qualified', m.qualified_leads],
+    ['Qualification rate', (m.qualification_rate * 100).toFixed(0) + '%'],
+    ['Bookings', m.bookings],
+    ['Briefs', m.briefs_generated],
+    ['Record completeness', (m.record_completeness * 100).toFixed(0) + '%'],
+    ['LLM spend', '$' + Number(m.total_llm_cost_usd).toFixed(4)],
+    ['Cost / conversation', '$' + Number(m.cost_per_conversation_usd).toFixed(5)],
+    ['Open escalations', m.open_escalations],
+  ];
+  $('metrics').innerHTML = tiles.map(([label, value]) => `
+    <div class="metric"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div></div>
+  `).join('');
+}
+
+async function loadLeads() {
+  const { leads } = await api('/api/admin/leads?limit=200');
+  if (!leads.length) return $('view').innerHTML = '<div class="empty">No leads captured yet.</div>';
+  $('view').innerHTML = `<table><thead><tr>
+      <th>Contact</th><th>Company</th><th>Interest</th><th>Budget</th>
+      <th>Timeline</th><th>Score</th><th>Status</th><th>Summary</th>
+    </tr></thead><tbody>${leads.map(l => `
+      <tr class="clickable" data-session="${esc(l.session_id)}">
+        <td>${esc(l.name || '—')}<div class="muted">${esc(l.email || '')}</div></td>
+        <td>${esc(l.company || '—')}<div class="muted">${esc(l.business_type || '')}</div></td>
+        <td>${esc(l.service_interest || '—')}${l.has_brief ? ' <span class="muted">· brief</span>' : ''}</td>
+        <td>${esc((l.budget_band || '—').replace(/_/g, ' '))}</td>
+        <td>${esc((l.timeline || '—').replace(/_/g, ' '))}</td>
+        <td><span class="score ${scoreClass(l.qualification_score)}">${(l.qualification_score * 100).toFixed(0)}%</span></td>
+        <td>${esc(l.status)}</td>
+        <td class="muted">${esc(l.transcript_summary || l.pain_point || '')}</td>
+      </tr>`).join('')}</tbody></table>`;
+
+  document.querySelectorAll('tr[data-session]').forEach(row =>
+    row.addEventListener('click', () => showSession(row.dataset.session)));
+}
+
+async function loadBriefs() {
+  const { briefs } = await api('/api/admin/briefs');
+  if (!briefs.length) return $('view').innerHTML = '<div class="empty">No project briefs yet.</div>';
+  $('view').innerHTML = briefs.map(b => `
+    <div class="brief" style="margin:16px">
+      <strong>${esc(b.title)}</strong>
+      <div class="muted" style="margin:6px 0 10px">${esc(b.created_at)} · session ${esc(b.session_id)}</div>
+      <div>${esc(b.summary)}</div>
+      <div style="margin-top:10px"><span class="muted">Recommended:</span> ${esc((b.recommended_services || []).join(', '))}</div>
+      <div><span class="muted">Budget:</span> ${esc((b.budget_band || 'n/a').replace(/_/g,' '))} ·
+           <span class="muted">Timeline:</span> ${esc((b.timeline || 'n/a').replace(/_/g,' '))}</div>
+      ${(b.risk_flags || []).length ? `<div style="margin-top:8px;color:var(--warn)">Risks: ${esc(b.risk_flags.join('; '))}</div>` : ''}
+    </div>`).join('');
+}
+
+async function loadEmails() {
+  const { emails } = await api('/api/admin/emails');
+  if (!emails.length) return $('view').innerHTML = '<div class="empty">No emails queued.</div>';
+  $('view').innerHTML = `<table><thead><tr>
+      <th>To</th><th>Subject</th><th>Status</th><th>Created</th><th></th>
+    </tr></thead><tbody>${emails.map(e => `
+      <tr>
+        <td>${esc(e.to_email)}</td>
+        <td>${esc(e.subject)}<details><summary class="muted">preview</summary><pre>${esc(e.body)}</pre></details></td>
+        <td>${esc(e.status)}${e.error ? `<div class="muted">${esc(e.error)}</div>` : ''}</td>
+        <td class="muted">${esc(e.created_at.slice(0, 16).replace('T', ' '))}</td>
+        <td>${e.status === 'pending_approval' ? `
+          <button data-approve="${esc(e.id)}">Approve &amp; send</button>
+          <button data-reject="${esc(e.id)}">Reject</button>` : ''}</td>
+      </tr>`).join('')}</tbody></table>`;
+
+  document.querySelectorAll('[data-approve]').forEach(btn =>
+    btn.addEventListener('click', () => decide(btn.dataset.approve, true)));
+  document.querySelectorAll('[data-reject]').forEach(btn =>
+    btn.addEventListener('click', () => decide(btn.dataset.reject, false)));
+}
+
+async function decide(emailId, approve) {
+  try {
+    await api('/api/admin/emails/approve', {
+      method: 'POST',
+      body: JSON.stringify({ email_id: emailId, approve }),
+    });
+    setStatus(approve ? 'Email approved and sent.' : 'Email rejected.');
+    loadEmails();
+  } catch (e) { setStatus(e.message, true); }
+}
+
+async function loadEscalations() {
+  const { escalations } = await api('/api/admin/escalations');
+  if (!escalations.length) return $('view').innerHTML = '<div class="empty">No open escalations.</div>';
+  $('view').innerHTML = `<table><thead><tr>
+      <th>Created</th><th>Session</th><th>Reason</th><th>Conversation</th>
+    </tr></thead><tbody>${escalations.map(e => `
+      <tr>
+        <td class="muted">${esc(e.created_at.slice(0, 16).replace('T', ' '))}</td>
+        <td class="muted">${esc(e.session_id.slice(0, 8))}</td>
+        <td>${esc(e.reason)}</td>
+        <td><details><summary class="muted">transcript</summary><pre>${esc(e.transcript_summary || '')}</pre></details></td>
+      </tr>`).join('')}</tbody></table>`;
+}
+
+async function showSession(sessionId) {
+  try {
+    const data = await api(`/api/admin/sessions/${sessionId}`);
+    $('detail-title').textContent = `Session ${sessionId.slice(0, 8)} · ${data.session.status}`;
+    const brief = data.brief ? `
+      <div class="brief">
+        <strong>${esc(data.brief.title)}</strong>
+        <p>${esc(data.brief.summary)}</p>
+        <div><span class="muted">Goals:</span> ${esc((data.brief.goals || []).join('; ') || '—')}</div>
+        <div><span class="muted">Recommended:</span> ${esc((data.brief.recommended_services || []).join(', '))}</div>
+        <div><span class="muted">Open questions:</span> ${esc((data.brief.open_questions || []).join('; ') || '—')}</div>
+      </div>` : '';
+    const summary = data.session.summary
+      ? `<div class="brief"><span class="muted">Summary:</span> ${esc(data.session.summary)}
+         <div style="margin-top:6px"><span class="muted">Next step:</span> ${esc(data.session.next_step || '—')}</div></div>` : '';
+    $('detail-body').innerHTML = summary + brief + data.transcript.map(t => `
+      <div class="turn ${t.role}"><div class="role">${esc(t.role)}</div><pre>${esc(t.content)}</pre></div>
+    `).join('');
+    $('detail').showModal();
+  } catch (e) { setStatus(e.message, true); }
+}
+
+const views = { leads: loadLeads, briefs: loadBriefs, emails: loadEmails, escalations: loadEscalations };
+
+async function render() {
+  try {
+    $('view').innerHTML = '<div class="empty">Loading…</div>';
+    await loadMetrics();
+    await views[currentView]();
+    setStatus('Connected.');
+  } catch (e) {
+    setStatus(e.message, true);
+  }
+}
+
+$('connect').addEventListener('click', async () => {
+  apiKey = $('key').value.trim();
+  sessionStorage.setItem('abacus_admin_key', apiKey);
+  $('app').classList.remove('hidden');
+  render();
+});
+
+$('key').addEventListener('keydown', e => { if (e.key === 'Enter') $('connect').click(); });
+$('refresh').addEventListener('click', render);
+
+$('export').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/admin/leads.csv', { headers: { 'X-Admin-Key': apiKey } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const url = URL.createObjectURL(await res.blob());
+    const a = Object.assign(document.createElement('a'), { href: url, download: 'abacus-leads.csv' });
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) { setStatus(e.message, true); }
+});
+
+$('reindex').addEventListener('click', async () => {
+  setStatus('Re-indexing site content… this can take a minute.');
+  try {
+    const r = await api('/api/admin/reindex', { method: 'POST', body: JSON.stringify({ crawl_site: true }) });
+    setStatus(`Indexed ${r.documents_embedded} documents from ${r.total_chunks} chunks (${r.site_chunks} from the live site).`);
+  } catch (e) { setStatus(e.message, true); }
+});
+
+$('crmsync').addEventListener('click', async () => {
+  try {
+    const r = await api('/api/admin/crm-sync', { method: 'POST' });
+    setStatus(r.reason ? r.reason : `Mirrored ${r.synced} of ${r.considered} leads.`);
+  } catch (e) { setStatus(e.message, true); }
+});
+
+document.querySelectorAll('nav button').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentView = btn.dataset.view;
+  render();
+}));
+
+if (apiKey) { $('key').value = apiKey; $('connect').click(); }
+</script>
+</body>
+</html>

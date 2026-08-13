@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abacus Digital Chatbot — Test Page</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+
+        :root {
+            --blue: #0099FF;
+            --blue-deep: #0684C7;
+            --blue-darkest: #004C88;
+            --blue-soft: #F4FAFF;
+            --ink: #171717;
+            --muted: #5A6472;
+            --line: #E3EBF3;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #FFFFFF;
+            background-image:
+                radial-gradient(ellipse at 15% 0%, rgba(0, 153, 255, 0.07) 0%, transparent 55%),
+                radial-gradient(ellipse at 85% 100%, rgba(6, 132, 199, 0.05) 0%, transparent 55%);
+            color: var(--ink);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 56px 24px;
+            line-height: 1.6;
+        }
+
+        .test-container {
+            width: 100%;
+            max-width: 620px;
+        }
+
+        .logo {
+            font-size: 46px;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, var(--blue), var(--blue-darkest));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 17px;
+            color: var(--muted);
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background: #FFFFFF;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 24px 28px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 16px rgba(16, 45, 74, 0.06);
+        }
+
+        .card h3 {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--blue-darkest);
+            margin-bottom: 14px;
+            letter-spacing: -0.01em;
+        }
+
+        .card ol, .card ul {
+            padding-left: 20px;
+            color: var(--muted);
+        }
+
+        .card li { margin-bottom: 6px; }
+        .card li:last-child { margin-bottom: 0; }
+
+        code {
+            background: var(--blue-soft);
+            border: 1px solid var(--line);
+            padding: 2px 7px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: var(--blue-darkest);
+        }
+
+        pre {
+            background: var(--blue-soft);
+            border: 1px solid var(--line);
+            padding: 16px;
+            border-radius: 10px;
+            overflow-x: auto;
+            font-size: 12.5px;
+            line-height: 1.7;
+            color: var(--blue-darkest);
+        }
+
+        .note {
+            font-size: 13px;
+            color: var(--muted);
+            margin-top: 12px;
+        }
+
+        a { color: var(--blue-deep); }
+
+        .arrow-hint {
+            position: fixed;
+            bottom: 96px;
+            right: 96px;
+            color: var(--blue-deep);
+            font-size: 14px;
+            font-weight: 500;
+            animation: point 2s ease-in-out infinite;
+            pointer-events: none;
+            z-index: 999998;
+        }
+
+        @keyframes point {
+            0%, 100% { transform: translate(0, 0); opacity: 0.75; }
+            50%      { transform: translate(10px, 5px); opacity: 1; }
+        }
+
+        @media (max-width: 560px) {
+            .arrow-hint { display: none; }
+            .logo { font-size: 36px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <div class="logo">Abacus Digital</div>
+        <p class="subtitle">
+            AI chatbot test page — click the chat bubble in the bottom-right corner to start.
+        </p>
+
+        <div class="card">
+            <h3>Testing guide</h3>
+            <ol>
+                <li>Start the backend: <code>cd backend &amp;&amp; uvicorn app.main:app --reload</code></li>
+                <li>Open this page from the backend so the widget finds the API automatically</li>
+                <li>Click the chat bubble and try:
+                    <ul style="margin-top: 6px;">
+                        <li>"What services do you offer?"</li>
+                        <li>"I need a website for my manufacturing company"</li>
+                        <li>"Tell me about AI automation"</li>
+                        <li>"I'd like to book a call"</li>
+                    </ul>
+                </li>
+            </ol>
+        </div>
+
+        <div class="card">
+            <h3>Framer embed — public site</h3>
+            <pre>&lt;script
+  src="https://your-backend-url.com/widget/abacus-chat-widget.js"
+  data-calendly-url="https://calendly.com/abacusdigital/discovery"&gt;
+&lt;/script&gt;</pre>
+            <p class="note">
+                The widget points at whichever origin serves the script, so
+                <code>data-api-url</code> is only needed when the backend lives elsewhere.
+            </p>
+        </div>
+
+        <div class="card">
+            <h3>Framer embed — client portal page</h3>
+            <pre>&lt;script
+  src="https://your-backend-url.com/widget/abacus-chat-widget.js"
+  data-mode="client"&gt;
+&lt;/script&gt;</pre>
+            <p class="note">
+                Put this on the client portal page only. It renders a sign-in panel, talks to
+                <code>/api/client/*</code>, and reads exclusively from the client knowledge base.
+                Try it at <a href="./client.html">client.html</a>.
+            </p>
+        </div>
+    </div>
+
+    <div class="arrow-hint">← Try the chat!</div>
+
+    <script src="./abacus-chat-widget.js?v=2026-08-13.2" data-mode="public"></script>
+</body>
+</html>

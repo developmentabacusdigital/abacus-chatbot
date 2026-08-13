@@ -1,0 +1,8 @@
+**/__pycache__
+**/*.pyc
+backend/data
+backend/.env
+.git
+.venv
+venv
+*.pdf

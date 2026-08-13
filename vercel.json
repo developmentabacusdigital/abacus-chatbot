@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/((?!widget/|dashboard/).*)",
+      "destination": "/api/index.py"
+    }
+  ],
+  "crons": [
+    { "path": "/api/cron/reindex", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/crm-sync", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/sweep", "schedule": "30 3 * * *" }
+  ]
+}

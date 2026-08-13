@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Abacus Digital — Client Portal (test page)</title>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+
+    :root {
+        --blue: #0099FF;
+        --blue-deep: #0684C7;
+        --blue-darkest: #004C88;
+        --blue-soft: #F4FAFF;
+        --ink: #171717;
+        --muted: #5A6472;
+        --line: #E3EBF3;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+        font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: #FFFFFF;
+        background-image: radial-gradient(ellipse at 20% 10%, rgba(0, 153, 255, 0.07) 0%, transparent 55%);
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 56px 24px;
+        line-height: 1.6;
+    }
+
+    .card-wrap { width: 100%; max-width: 620px; }
+
+    h1 {
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        margin-bottom: 10px;
+    }
+
+    .lede { color: var(--muted); margin-bottom: 28px; }
+
+    code {
+        background: var(--blue-soft);
+        border: 1px solid var(--line);
+        padding: 2px 7px;
+        border-radius: 6px;
+        font-size: 13px;
+        color: var(--blue-darkest);
+    }
+
+    .steps {
+        background: #FFFFFF;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 24px 28px;
+        box-shadow: 0 4px 16px rgba(16, 45, 74, 0.06);
+    }
+
+    .steps h2 {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--blue-darkest);
+        margin-bottom: 14px;
+    }
+
+    .steps ol { padding-left: 20px; color: var(--muted); }
+    .steps li { margin-bottom: 10px; }
+    .steps li:last-child { margin-bottom: 0; }
+</style>
+</head>
+<body>
+<div class="card-wrap">
+    <h1>Client Portal</h1>
+    <p class="lede">
+        This page hosts the authenticated support chat. It loads the same widget script with
+        <code>data-mode="client"</code>, which swaps in a sign-in panel and points the widget at the
+        client API. The public prospect knowledge base is never queried from here.
+    </p>
+
+    <div class="steps">
+        <h2>Testing the flow locally</h2>
+        <ol>
+            <li>Seed a client and a project:<br>
+                <code>python -m app.seed_client --email you@example.com --company "Acme Ltd"</code></li>
+            <li>Open the chat, enter that email, and request a sign-in link.</li>
+            <li>Without an email provider configured, the API returns the token directly and the
+                widget signs you in automatically.</li>
+            <li>Ask about project status, deliverables, or say “I want to speak to my account
+                manager” to trigger escalation.</li>
+        </ol>
+    </div>
+</div>
+
+<script src="./abacus-chat-widget.js?v=2026-08-13.2" data-mode="client"></script>
+</body>
+</html>
