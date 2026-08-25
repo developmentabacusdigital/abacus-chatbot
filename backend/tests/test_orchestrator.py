@@ -123,6 +123,55 @@ async def test_qualification_persists_partial_data_and_score(orchestrator, datab
 
 
 @pytest.mark.asyncio
+async def test_booking_is_withheld_until_an_email_is_given(orchestrator, database, monkeypatch):
+    """
+    A qualified lead with no email on file must be asked for one before the Calendly
+    link appears; giving it on the next turn unblocks the real booking response.
+    """
+    from app import chat_orchestrator as mod
+
+    monkeypatch.setattr(
+        mod.intent_classifier, "classify",
+        lambda **kwargs: _as_coro({"intent": mod.Intent.QUALIFICATION, "confidence": 0.9}),
+    )
+    fake = FakeRouter(json_responses=[{
+        "response": "Great, that's everything I need.",
+        "extracted_data": {
+            "business_type": "manufacturing",
+            "pain_point": "no inbound leads",
+            "budget_band": "over_50k",
+            "timeline": "immediate",
+            "decision_maker": "yes",
+        },
+        "enough_data_for_booking": True,
+    }])
+    monkeypatch.setattr("app.lead_qualifier.llm_router", fake)
+
+    session_id = await _new_session(database)
+    first = await orchestrator.process_message(ChatRequest(
+        session_id=session_id,
+        message="We manufacture valves, ready to start immediately, budget's not an issue",
+    ))
+
+    assert first.show_booking is False
+    assert "email" in first.message.lower()
+
+    state = orchestrator._sessions[session_id]
+    assert state.booking_email_pending is True
+
+    second = await orchestrator.process_message(ChatRequest(
+        session_id=session_id,
+        message="sure, it's jane@example.com",
+    ))
+
+    assert second.show_booking is True
+    assert second.booking_url
+
+    lead = await database.get_lead_by_session(session_id)
+    assert lead.email == "jane@example.com"
+
+
+@pytest.mark.asyncio
 async def test_intake_completion_produces_and_stores_a_brief(orchestrator, database, monkeypatch):
     from app import chat_orchestrator as mod
     from app.models import ProjectBrief

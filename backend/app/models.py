@@ -401,6 +401,7 @@ class ConversationState(BaseModel):
     qualification_score: float = 0.0
     is_qualified: bool = False
     booking_offered: bool = False
+    booking_email_pending: bool = False
     service_interests: List[str] = []
     source_page: Optional[str] = None
     message_count: int = 0

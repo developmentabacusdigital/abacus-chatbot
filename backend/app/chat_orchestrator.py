@@ -42,6 +42,17 @@ MAX_CACHED_SESSIONS = 500
 # A chat only gets a title once it has at least this many turns of substance
 TITLE_MIN_MESSAGE_COUNT = 2
 
+# Unlike the soft EMAIL_ASK earlier in a session, this one is mandatory: no Calendly
+# link goes out without somewhere to send the confirmation and calendar invite.
+BOOKING_EMAIL_ASK = (
+    "Before I hand you off to book a call — what's the best email to send your "
+    "confirmation and calendar invite to?"
+)
+BOOKING_EMAIL_RETRY = (
+    "I'll need a valid email address to send your booking confirmation and calendar "
+    "invite — what's the best one to use?"
+)
+
 
 class ChatOrchestrator:
     """Orchestrates the full conversation flow."""
@@ -165,41 +176,49 @@ class ChatOrchestrator:
         state.messages.append({"role": "user", "content": request.message})
         state.message_count += 1
 
-        # If we're waiting on a reply to the soft email ask, resolve it first. Whatever
-        # is left over from the visitor's message (if anything) still gets routed
-        # normally — declining or giving an email doesn't swallow a real question.
+        # If we're waiting on the mandatory pre-booking email, resolve it first — this
+        # takes priority over normal routing since nothing else matters until we have
+        # somewhere to send the confirmation.
         ack_prefix: Optional[str] = None
-        routed_message = request.message
-        if state.email_capture_pending:
-            state.email_capture_pending = False
-            ack_prefix, routed_message = await self._resolve_email_capture(
-                request.message, state
-            )
-
-        if routed_message.strip():
-            classification = await intent_classifier.classify(
-                message=routed_message,
-                conversation_history=state.messages,
-                current_state=state.current_intent.value,
-            )
-            intent = classification["intent"]
-
-            # Once discovery has started, stay in it unless the visitor clearly leaves
-            if state.in_intake and intent in (
-                Intent.QUALIFICATION, Intent.GENERAL, Intent.PROJECT_INTAKE, Intent.QUESTION
-            ):
-                intent = Intent.PROJECT_INTAKE
-
+        if state.booking_email_pending:
+            response_data = await self._resolve_booking_email(request.message, state)
+            intent = Intent.BOOKING
             state.current_intent = intent
-            response_data = await self._route_intent(intent, routed_message, state)
         else:
-            # Pure decline/ack with nothing else in the message — nothing to route.
-            intent = Intent.GENERAL
-            response_data = {
-                "message": "What can I help you with today?",
-                "model_used": "template",
-                "cost": 0.0,
-            }
+            # If we're waiting on a reply to the soft email ask, resolve it first. Whatever
+            # is left over from the visitor's message (if anything) still gets routed
+            # normally — declining or giving an email doesn't swallow a real question.
+            routed_message = request.message
+            if state.email_capture_pending:
+                state.email_capture_pending = False
+                ack_prefix, routed_message = await self._resolve_email_capture(
+                    request.message, state
+                )
+
+            if routed_message.strip():
+                classification = await intent_classifier.classify(
+                    message=routed_message,
+                    conversation_history=state.messages,
+                    current_state=state.current_intent.value,
+                )
+                intent = classification["intent"]
+
+                # Once discovery has started, stay in it unless the visitor clearly leaves
+                if state.in_intake and intent in (
+                    Intent.QUALIFICATION, Intent.GENERAL, Intent.PROJECT_INTAKE, Intent.QUESTION
+                ):
+                    intent = Intent.PROJECT_INTAKE
+
+                state.current_intent = intent
+                response_data = await self._route_intent(intent, routed_message, state)
+            else:
+                # Pure decline/ack with nothing else in the message — nothing to route.
+                intent = Intent.GENERAL
+                response_data = {
+                    "message": "What can I help you with today?",
+                    "model_used": "template",
+                    "cost": 0.0,
+                }
 
         # A handler may redirect (e.g. the classifier says "general" but the message is a
         # project brief). Report where the turn actually went, not where it was filed.
@@ -216,6 +235,7 @@ class ChatOrchestrator:
         if (
             not state.email_capture_asked
             and not state.email_capture_pending
+            and not state.booking_email_pending
             and state.message_count == 1
             and intent not in (Intent.DATA_DELETION, Intent.HUMAN_HANDOFF)
         ):
@@ -287,6 +307,74 @@ class ChatOrchestrator:
             return DECLINE_ACK, ""
 
         return None, message
+
+    async def _offer_booking(
+        self,
+        state: ConversationState,
+        lead_data: Dict[str, Any],
+        qualification_score: float,
+    ) -> Dict[str, Any]:
+        """
+        Produce the booking segment for a turn.
+
+        If we already have an email on file, this is the real Calendly link. Otherwise
+        it's a mandatory ask — unlike the soft capture earlier in the session, this one
+        can't be declined, since a booking confirmation needs somewhere to go. The reply
+        is picked up by _resolve_booking_email on the visitor's next message.
+        """
+        email = lead_data.get("email") or state.intake_data.get("email")
+        if not is_valid_email(email or ""):
+            state.booking_email_pending = True
+            return {"message": BOOKING_EMAIL_ASK, "show_booking": False, "booking_url": None}
+
+        state.booking_email_pending = False
+        booking = booking_handler.generate_booking_response(
+            lead_data=lead_data, qualification_score=qualification_score
+        )
+        return {
+            "message": booking["message"],
+            "show_booking": True,
+            "booking_url": booking["booking_url"],
+        }
+
+    async def _resolve_booking_email(
+        self, message: str, state: ConversationState
+    ) -> Dict[str, Any]:
+        """Interpret a reply to the mandatory pre-booking email ask."""
+        email = extract_email(message)
+        if not email:
+            return {
+                "message": BOOKING_EMAIL_RETRY,
+                "show_booking": False,
+                "suggestions": [],
+                "model_used": "template",
+                "cost": 0.0,
+            }
+
+        state.booking_email_pending = False
+        # This reply also answers the soft ask, if it was somehow still outstanding —
+        # don't leave it pending to misfire against a later, unrelated message.
+        state.email_capture_asked = True
+        state.email_capture_pending = False
+        await db.update_lead_fields(state.session_id, {"email": email})
+        state.qualification_data["email"] = email
+
+        booking = booking_handler.generate_booking_response(
+            lead_data=state.qualification_data,
+            qualification_score=state.qualification_score,
+        )
+        state.booking_offered = True
+        await db.update_session(state.session_id, status=SessionStatus.BOOKED.value)
+        await self._maybe_email_booking(state)
+
+        return {
+            "message": f"Thanks! {booking['message']}",
+            "show_booking": True,
+            "booking_url": booking["booking_url"],
+            "suggestions": [],
+            "model_used": "template",
+            "cost": 0.0,
+        }
 
     async def _update_category(self, state: ConversationState) -> None:
         """
@@ -514,16 +602,18 @@ What brings you here today?"""
         }
 
         if result["should_offer_booking"]:
-            booking = booking_handler.generate_booking_response(
-                lead_data=state.qualification_data,
-                qualification_score=result["qualification_score"],
+            booking = await self._offer_booking(
+                state, state.qualification_data, result["qualification_score"]
             )
             response["message"] += "\n\n" + booking["message"]
-            response["show_booking"] = True
-            response["booking_url"] = booking["booking_url"]
-            state.booking_offered = True
-            await db.update_session(state.session_id, status=SessionStatus.QUALIFIED.value)
-            await self._maybe_email_booking(state)
+            response["show_booking"] = booking["show_booking"]
+            if booking["show_booking"]:
+                response["booking_url"] = booking["booking_url"]
+                state.booking_offered = True
+                await db.update_session(state.session_id, status=SessionStatus.QUALIFIED.value)
+                await self._maybe_email_booking(state)
+            else:
+                response["suggestions"] = []
 
         elif result["is_qualified"] is False and state.message_count > 6:
             # Below threshold after a real conversation: give self-serve resources (PRD 7.2)
@@ -591,10 +681,7 @@ What brings you here today?"""
             })
             await db.update_session(state.session_id, status=SessionStatus.QUALIFIED.value)
 
-            booking = booking_handler.generate_booking_response(
-                lead_data=state.qualification_data,
-                qualification_score=score,
-            )
+            booking = await self._offer_booking(state, state.qualification_data, score)
 
             response["message"] = (
                 f"{turn['response']}\n\n"
@@ -604,8 +691,9 @@ What brings you here today?"""
                 f"{brief.bundle_rationale}\n\n"
                 f"{booking['message']}"
             )
-            response["show_booking"] = True
-            response["booking_url"] = booking["booking_url"]
+            response["show_booking"] = booking["show_booking"]
+            if booking["show_booking"]:
+                response["booking_url"] = booking["booking_url"]
             response["brief_ready"] = True
             response["cost"] = cost
             response["suggestions"] = []
@@ -618,22 +706,25 @@ What brings you here today?"""
 
     async def _handle_booking(self, message: str, state: ConversationState) -> Dict[str, Any]:
         """Handle direct booking requests."""
-        booking = booking_handler.generate_booking_response(
-            lead_data=state.qualification_data,
-            qualification_score=state.qualification_score,
+        booking = await self._offer_booking(
+            state, state.qualification_data, state.qualification_score
         )
-
         state.booking_offered = True
-        await db.update_session(state.session_id, status=SessionStatus.BOOKED.value)
-        await self._maybe_email_booking(state)
 
-        return {
+        if booking["show_booking"]:
+            await db.update_session(state.session_id, status=SessionStatus.BOOKED.value)
+            await self._maybe_email_booking(state)
+
+        result: Dict[str, Any] = {
             "message": booking["message"],
-            "show_booking": True,
+            "show_booking": booking["show_booking"],
             "booking_url": booking["booking_url"],
             "model_used": "template",
             "cost": 0.0,
         }
+        if not booking["show_booking"]:
+            result["suggestions"] = []
+        return result
 
     async def _handle_farewell(self, message: str, state: ConversationState) -> Dict[str, Any]:
         """Handle farewell messages and close out the session record."""
