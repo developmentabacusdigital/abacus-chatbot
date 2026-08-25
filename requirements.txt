@@ -1,5 +1,8 @@
-# Vercel's Python builder looks for requirements.txt at the repo root. The actual
-# dependency list lives in backend/requirements.txt (used directly for local dev via
-# `cd backend && pip install -r requirements.txt`) — this just points at it so the two
-# never drift out of sync.
--r backend/requirements.txt
+fastapi>=0.110
+uvicorn[standard]>=0.27
+asyncpg>=0.29
+httpx>=0.26
+python-dotenv>=1.0
+pydantic-settings>=2.2
+email-validator>=2.1
+beautifulsoup4>=4.12
