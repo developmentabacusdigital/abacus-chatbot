@@ -5,12 +5,6 @@
       "maxDuration": 60
     }
   },
-  "rewrites": [
-    {
-      "source": "/((?!widget/|dashboard/).*)",
-      "destination": "/api/index.py"
-    }
-  ],
   "crons": [
     { "path": "/api/cron/reindex", "schedule": "0 3 * * *" },
     { "path": "/api/cron/crm-sync", "schedule": "0 9 * * *" },
