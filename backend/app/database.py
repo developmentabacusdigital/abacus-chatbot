@@ -64,9 +64,8 @@ class Database:
         if not self.database_url:
             try:
                 import pgserver
-                import os
-                pg_data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "postgres"))
-                os.makedirs(pg_data_dir, exist_ok=True)
+                import tempfile
+                pg_data_dir = tempfile.mkdtemp(prefix="abacus_local_pg_")
                 logger.info(f"DATABASE_URL not set; starting local embedded Postgres at {pg_data_dir}...")
                 self._local_pg_server = pgserver.get_server(pg_data_dir)
                 self.database_url = self._local_pg_server.get_uri()

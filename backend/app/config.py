@@ -102,48 +102,48 @@ class Settings(BaseSettings):
 
 MODEL_ROUTING = {
     "intent_classification": {
-        "primary": "meta-llama/llama-3.1-8b-instruct:free",
-        "fallback": "google/gemini-2.0-flash-exp:free",
+        "primary": "meta-llama/llama-3.1-8b-instruct",
+        "fallback": "google/gemini-2.5-flash",
         "tier": "cheap",
     },
     "rag_answer": {
-        "primary": "google/gemini-2.0-flash-exp:free",
-        "fallback": "google/gemini-2.5-flash",
+        "primary": "google/gemini-2.5-flash",
+        "fallback": "meta-llama/llama-3.3-70b-instruct",
         "tier": "mid",
     },
     "qualification": {
-        "primary": "google/gemini-2.0-flash-exp:free",
-        "fallback": "google/gemini-2.5-flash",
+        "primary": "google/gemini-2.5-flash",
+        "fallback": "meta-llama/llama-3.3-70b-instruct",
         "tier": "mid",
     },
     "intake_reasoning": {
         "primary": "google/gemini-2.5-flash",
-        "fallback": "anthropic/claude-haiku-4.5",
+        "fallback": "anthropic/claude-3-haiku",
         "tier": "strong",
     },
     "service_matching": {
         "primary": "google/gemini-2.5-flash",
-        "fallback": "anthropic/claude-haiku-4.5",
+        "fallback": "anthropic/claude-3-haiku",
         "tier": "strong",
     },
     "brief_generation": {
         "primary": "google/gemini-2.5-flash",
-        "fallback": "anthropic/claude-haiku-4.5",
+        "fallback": "anthropic/claude-3-haiku",
         "tier": "strong",
     },
     "summarization": {
-        "primary": "google/gemini-2.0-flash-exp:free",
+        "primary": "meta-llama/llama-3.1-8b-instruct",
         "fallback": "google/gemini-2.5-flash",
         "tier": "cheap",
     },
     "client_support": {
         "primary": "google/gemini-2.5-flash",
-        "fallback": "anthropic/claude-haiku-4.5",
+        "fallback": "anthropic/claude-3-haiku",
         "tier": "mid",
     },
     "general": {
-        "primary": "google/gemini-2.0-flash-exp:free",
-        "fallback": "meta-llama/llama-3.1-8b-instruct:free",
+        "primary": "google/gemini-2.5-flash",
+        "fallback": "meta-llama/llama-3.1-8b-instruct",
         "tier": "cheap",
     },
 }
