@@ -21,8 +21,9 @@ logger = logging.getLogger(__name__)
 
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
-# Gemini's batchEmbedContents caps requests per call; chunk larger jobs to stay under it.
-MAX_BATCH_SIZE = 100
+# gemini-embedding-001 only supports the single-text embedContent method (no synchronous
+# batchEmbedContents), so a "batch" here is just this many concurrent embedContent calls.
+MAX_BATCH_SIZE = 20
 
 TaskType = Literal["document", "query"]
 
@@ -85,47 +86,49 @@ class EmbeddingClient:
         return result[0]
 
     async def _embed_batch(self, texts: List[str], task_type: TaskType) -> List[List[float]]:
+        semaphore = asyncio.Semaphore(MAX_BATCH_SIZE)
+        results = await asyncio.gather(*(
+            self._embed_single(text, task_type, semaphore) for text in texts
+        ))
+        return list(results)
+
+    async def _embed_single(
+        self, text: str, task_type: TaskType, semaphore: asyncio.Semaphore
+    ) -> List[float]:
         model = settings.embedding_model
-        url = f"{GEMINI_API_URL}/{model}:batchEmbedContents?key={settings.google_api_key}"
+        url = f"{GEMINI_API_URL}/{model}:embedContent?key={settings.google_api_key}"
         gemini_task = _GEMINI_TASK_TYPE.get(task_type, "RETRIEVAL_DOCUMENT")
 
         payload = {
-            "requests": [
-                {
-                    "model": f"models/{model}",
-                    "content": {"parts": [{"text": text}]},
-                    "taskType": gemini_task,
-                    "outputDimensionality": settings.embedding_dimensions,
-                }
-                for text in texts
-            ]
+            "model": f"models/{model}",
+            "content": {"parts": [{"text": text}]},
+            "taskType": gemini_task,
+            "outputDimensionality": settings.embedding_dimensions,
         }
 
         last_error: Exception | None = None
-        for attempt in range(3):
-            try:
-                response = await self._client.post(url, json=payload)
-                if response.status_code == 429 and attempt < 2:
-                    await asyncio.sleep(1.5 * (attempt + 1))
-                    continue
-                response.raise_for_status()
-                data = response.json()
-                embeddings = data.get("embeddings")
-                if not embeddings or len(embeddings) != len(texts):
-                    raise EmbeddingError(
-                        f"Embedding API returned {len(embeddings or [])} vectors for "
-                        f"{len(texts)} inputs"
-                    )
-                return [e["values"] for e in embeddings]
-            except httpx.HTTPStatusError as e:
-                last_error = e
-                logger.error(f"Embedding API error: {e.response.status_code} - {e.response.text[:300]}")
-                if e.response.status_code != 429:
+        async with semaphore:
+            for attempt in range(3):
+                try:
+                    response = await self._client.post(url, json=payload)
+                    if response.status_code == 429 and attempt < 2:
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                        continue
+                    response.raise_for_status()
+                    data = response.json()
+                    values = (data.get("embedding") or {}).get("values")
+                    if not values:
+                        raise EmbeddingError("Embedding API returned no vector")
+                    return values
+                except httpx.HTTPStatusError as e:
+                    last_error = e
+                    logger.error(f"Embedding API error: {e.response.status_code} - {e.response.text[:300]}")
+                    if e.response.status_code != 429:
+                        break
+                except Exception as e:
+                    last_error = e
+                    logger.error(f"Embedding request failed: {e}")
                     break
-            except Exception as e:
-                last_error = e
-                logger.error(f"Embedding request failed: {e}")
-                break
 
         raise EmbeddingError(f"Failed to generate embeddings: {last_error}")
 

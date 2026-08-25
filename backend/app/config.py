@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # start budget, so embeddings go through an API instead. Default is Gemini's
     # free-tier embedding endpoint; swap providers by editing app/embeddings.py.
     google_api_key: str = ""
-    embedding_model: str = "text-embedding-004"
+    embedding_model: str = "gemini-embedding-001"
 
     # --- Scheduled jobs (Vercel Cron hits these instead of an in-process loop) ---
     # Vercel sends "Authorization: Bearer <CRON_SECRET>" automatically on cron-
