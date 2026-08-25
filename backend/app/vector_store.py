@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 PUBLIC_NAMESPACE = "public"
 CLIENT_NAMESPACE = "client"
 
+# Small enough that a rate-limit failure partway through a large re-index only costs
+# this many chunks of progress, not the whole job.
+INDEX_SUB_BATCH_SIZE = 25
+
 _TABLE_NAMES = {
     PUBLIC_NAMESPACE: "public_documents",
     CLIENT_NAMESPACE: "client_documents",
@@ -102,7 +106,17 @@ class VectorStore:
         Each chunk needs: id, text, metadata (client chunks also need
         metadata["client_id"]). Chunks whose text is unchanged since the last index are
         skipped so a scheduled re-index only pays to embed what actually moved.
-        Returns the number of documents embedded.
+
+        Embedded and written in small sub-batches rather than all at once: the free-tier
+        embedding API rate-limits under a large job, and a failure partway through a
+        single big batch would otherwise discard everything already embedded in that
+        call. Writing incrementally means a call that runs out of time (or hits a
+        run of 429s) still commits whatever it got done, and a retry naturally picks up
+        the remainder via the unchanged-text skip above — no separate resume state needed.
+
+        Returns the number of documents actually embedded (may be less than len(chunks)
+        if a later sub-batch fails after earlier ones succeeded; the exception still
+        propagates once nothing more can be written, but already-committed rows stay).
         """
         await self.ensure_schema()
         if not chunks:
@@ -120,9 +134,25 @@ class VectorStore:
                 logger.info(f"[{namespace}] No changed documents to index")
                 return 0
 
-        texts = [c["text"] for c in to_index]
-        embeddings = await embedding_client.embed(texts, task_type="document")
+        total_indexed = 0
+        for i in range(0, len(to_index), INDEX_SUB_BATCH_SIZE):
+            sub = to_index[i:i + INDEX_SUB_BATCH_SIZE]
+            texts = [c["text"] for c in sub]
+            embeddings = await embedding_client.embed(texts, task_type="document")
+            await self._write_documents(table, namespace, sub, embeddings, pool)
+            total_indexed += len(sub)
 
+        logger.info(f"[{namespace}] Indexed {total_indexed} documents")
+        return total_indexed
+
+    async def _write_documents(
+        self,
+        table: str,
+        namespace: str,
+        docs: List[Dict[str, Any]],
+        embeddings: List[List[float]],
+        pool,
+    ) -> None:
         if namespace == CLIENT_NAMESPACE:
             await pool.executemany(
                 f"""INSERT INTO {table} (id, text, metadata, embedding, client_id)
@@ -135,7 +165,7 @@ class VectorStore:
                         c["id"], c["text"], json.dumps(_clean_metadata(c["metadata"])),
                         _to_vector_literal(vec), _clean_metadata(c["metadata"]).get("client_id", ""),
                     )
-                    for c, vec in zip(to_index, embeddings)
+                    for c, vec in zip(docs, embeddings)
                 ],
             )
         else:
@@ -146,12 +176,9 @@ class VectorStore:
                       text = EXCLUDED.text, metadata = EXCLUDED.metadata, embedding = EXCLUDED.embedding""",
                 [
                     (c["id"], c["text"], json.dumps(_clean_metadata(c["metadata"])), _to_vector_literal(vec))
-                    for c, vec in zip(to_index, embeddings)
+                    for c, vec in zip(docs, embeddings)
                 ],
             )
-
-        logger.info(f"[{namespace}] Indexed {len(to_index)} documents")
-        return len(to_index)
 
     async def search(
         self,
@@ -249,12 +276,26 @@ class VectorStore:
         ]
 
     async def reindex(self, chunks: List[Dict[str, Any]], namespace: str = PUBLIC_NAMESPACE) -> int:
-        """Force reindex all documents in a namespace (for content updates)."""
+        """
+        Reindex a namespace against a fresh chunk set: drop any stored document whose id
+        isn't in the new set (stale/removed pages), then index the rest incrementally.
+
+        Unlike a wipe-and-force-embed-everything, this stays resumable under the
+        embedding API's rate limits — unchanged chunks are skipped on each retry instead
+        of the whole namespace being re-embedded from scratch every time.
+        """
         await self.ensure_schema()
         table = _TABLE_NAMES[namespace]
-        await db._pool.execute(f"DELETE FROM {table}")
-        count = await self.index_documents(chunks, namespace=namespace, force=True)
-        logger.info(f"[{namespace}] Reindexed {count} documents")
+        pool = db._pool
+
+        current_ids = [c["id"] for c in chunks]
+        if current_ids:
+            await pool.execute(f"DELETE FROM {table} WHERE id != ALL($1::text[])", current_ids)
+        else:
+            await pool.execute(f"DELETE FROM {table}")
+
+        count = await self.index_documents(chunks, namespace=namespace, force=False)
+        logger.info(f"[{namespace}] Reindexed ({count} embedded, stale entries pruned)")
         return count
 
     async def delete_client_documents(self, client_id: str) -> int:

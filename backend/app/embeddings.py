@@ -23,7 +23,11 @@ GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 # gemini-embedding-001 only supports the single-text embedContent method (no synchronous
 # batchEmbedContents), so a "batch" here is just this many concurrent embedContent calls.
-MAX_BATCH_SIZE = 20
+# Kept modest — the free tier's per-minute quota is easy to blow through with high
+# concurrency, and a 429 here costs an entire indexing sub-batch's worth of retries.
+MAX_BATCH_SIZE = 5
+
+MAX_RETRIES = 5
 
 TaskType = Literal["document", "query"]
 
@@ -108,11 +112,11 @@ class EmbeddingClient:
 
         last_error: Exception | None = None
         async with semaphore:
-            for attempt in range(3):
+            for attempt in range(MAX_RETRIES):
                 try:
                     response = await self._client.post(url, json=payload)
-                    if response.status_code == 429 and attempt < 2:
-                        await asyncio.sleep(1.5 * (attempt + 1))
+                    if response.status_code == 429 and attempt < MAX_RETRIES - 1:
+                        await asyncio.sleep(self._retry_delay(response, attempt))
                         continue
                     response.raise_for_status()
                     data = response.json()
@@ -131,6 +135,17 @@ class EmbeddingClient:
                     break
 
         raise EmbeddingError(f"Failed to generate embeddings: {last_error}")
+
+    @staticmethod
+    def _retry_delay(response: httpx.Response, attempt: int) -> float:
+        """Honor the API's Retry-After if it sent one; otherwise back off exponentially."""
+        retry_after = response.headers.get("retry-after")
+        if retry_after:
+            try:
+                return float(retry_after)
+            except ValueError:
+                pass
+        return min(2.0 * (2 ** attempt), 30.0)
 
 
 # Singleton
