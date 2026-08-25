@@ -57,14 +57,26 @@ class Database:
     def __init__(self, database_url: str = None):
         self.database_url = database_url or settings.database_url
         self._pool: Optional[asyncpg.Pool] = None
+        self._local_pg_server = None
 
     async def connect(self):
         """Initialize the connection pool and create tables."""
         if not self.database_url:
-            raise RuntimeError(
-                "DATABASE_URL is not set. Use Neon's pooled connection string "
-                "(the one with '-pooler' in the hostname)."
-            )
+            try:
+                import pgserver
+                import os
+                pg_data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "postgres"))
+                os.makedirs(pg_data_dir, exist_ok=True)
+                logger.info(f"DATABASE_URL not set; starting local embedded Postgres at {pg_data_dir}...")
+                self._local_pg_server = pgserver.get_server(pg_data_dir)
+                self.database_url = self._local_pg_server.get_uri()
+                logger.info(f"Local Postgres running at {self.database_url}")
+            except Exception as e:
+                logger.warning(f"Could not start embedded pgserver: {e}")
+                raise RuntimeError(
+                    "DATABASE_URL is not set and local pgserver failed to start. "
+                    "Use Neon's pooled connection string or set DATABASE_URL."
+                ) from e
         self._pool = await asyncpg.create_pool(
             self.database_url,
             min_size=settings.database_pool_min_size,
@@ -79,6 +91,12 @@ class Database:
         if self._pool:
             await self._pool.close()
             self._pool = None
+        if self._local_pg_server:
+            try:
+                self._local_pg_server.cleanup()
+            except Exception:
+                pass
+            self._local_pg_server = None
 
     async def _create_tables(self):
         """Create database tables if they don't exist."""

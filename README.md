@@ -1,211 +1,374 @@
 # Abacus Digital Chatbot
 
-AI chatbot for the [Abacus Digital](https://www.abacusdigital.net/) website. It answers
-service questions grounded in the live site content, qualifies leads, runs agentic project
-intake, books discovery calls, and supports existing clients through a separate
-authenticated surface. Built against the [PRD](PRD.md), all three phases.
+AI chatbot for the [Abacus Digital](https://www.abacusdigital.net/) website.
 
-Runs on free tiers throughout: **Neon** for Postgres + vector search (pgvector), **Vercel**
-for hosting, Gemini's free tier for embeddings, and OpenRouter's free model roster for
-chat where quality allows.
+The chatbot answers service questions grounded in live website content, qualifies leads, runs agentic project intake, books discovery calls, and supports existing clients through a separate authenticated surface.
 
----
+Built against the `PRD.md` across all three phases.
 
-## What's implemented
+Runs primarily on free tiers:
 
-**Phase 1 — Foundation**
-- RAG Q&A grounded in the company doc **plus a live crawl** of `/all-services/*` and
-  `/blog/*`, with source citations and an honest "I don't know" when retrieval misses
-- Daily scheduled re-index, plus a `POST /api/admin/reindex` webhook for publish events
-- Conversational lead qualification with weighted scoring (budget 30 / timeline 25 /
-  authority 25 / fit 20)
-- Booking hand-off to Calendly for qualified leads, confirmed in chat and by email
-- Every session persists — including abandoned ones — with progressive field capture,
-  a transcript summary, and a suggested next step for the sales team
-
-**Phase 2 — Agentic Intake**
-- Multi-turn discovery agent covering goals, current state, constraints, budget, timeline
-  and success criteria
-- Service matching across all nine capability areas, including multi-service bundling
-  with an explicit rationale
-- Structured `ProjectBrief` stored as the system of record, with risk flags and open
-  questions for the sales team
-- Auto-drafted follow-up email, **queued for human approval** in the dashboard by default
-
-**Phase 3 — Client Support**
-- Magic-link authentication (single-use, 20-minute links; opaque server-side session tokens)
-- A physically separate pgvector table for client project data, retrieved only with a
-  hard, indexed `client_id` filter — not just a key inside a metadata blob
-- Escalation to a human account manager on commercial, contractual, or unresolvable queries
-- The public and client indexes are never queried in the same call
-
-**Cross-cutting**
-- Internal dashboard at `/dashboard/` — leads, briefs, email approvals, escalations,
-  metrics, CSV export
-- Optional CRM mirror to Airtable or HubSpot free tiers (the app's own DB stays the
-  system of record)
-- Guardrails: no fabricated pricing, commitment-language disclaimers, sensitive-data
-  rejection, per-session and per-IP rate limits
-- Real per-conversation cost tracking from OpenRouter usage
+* **Neon** for PostgreSQL + `pgvector`
+* **Vercel** for hosting
+* **Google Gemini** free tier for embeddings
+* **OpenRouter** free model roster for chat where quality allows
 
 ---
 
-## Quick start
+## What's Implemented
 
-You need three things before the app will fully boot: a Postgres database, an OpenRouter
-key, and a Gemini key for embeddings. All three have usable free tiers.
+### Phase 1 — Foundation
 
-1. **Database — [Neon](https://neon.tech)**: create a free project, then copy the
-   **pooled** connection string (hostname contains `-pooler`) from the dashboard.
-2. **Chat — [OpenRouter](https://openrouter.ai/keys)**: create a key.
-3. **Embeddings — [Google AI Studio](https://aistudio.google.com/apikey)**: create a
-   free key. Without it the app still boots and answers greetings/general questions —
-   it just can't ground answers in the knowledge base until the key is set.
+* RAG Q&A grounded in the company documentation plus a live crawl of `/all-services/*` and `/blog/*`
+* Source citations in generated answers
+* Honest `"I don't know"` response when retrieval does not provide sufficient context
+* Daily scheduled re-indexing
+* `POST /api/admin/reindex` webhook for publish events
+* Conversational lead qualification with weighted scoring:
+
+  * Budget: 30%
+  * Timeline: 25%
+  * Authority: 25%
+  * Fit: 20%
+* Booking hand-off to Calendly for qualified leads
+* Booking confirmation in chat and by email
+* Persistent sessions, including abandoned sessions
+* Progressive lead-field capture
+* Transcript summaries
+* Suggested next steps for the sales team
+
+### Phase 2 — Agentic Intake
+
+* Multi-turn discovery agent covering:
+
+  * Goals
+  * Current state
+  * Constraints
+  * Budget
+  * Timeline
+  * Success criteria
+* Service matching across all nine capability areas
+* Multi-service bundling with an explicit rationale
+* Structured `ProjectBrief` stored as the system of record
+* Risk flags and open questions for the sales team
+* Auto-drafted follow-up emails
+* Human approval required before follow-up emails are sent
+
+### Phase 3 — Client Support
+
+* Magic-link authentication
+
+  * Single-use links
+  * 20-minute expiration
+  * Opaque server-side session tokens
+* Separate `pgvector` table for client project data
+* Hard, indexed `client_id` filtering rather than relying only on metadata
+* Escalation to a human account manager for:
+
+  * Commercial questions
+  * Contractual questions
+  * Unresolvable queries
+* Public and client knowledge indexes are never queried in the same request
+
+### Cross-Cutting Features
+
+* Internal dashboard at `/dashboard/`
+* Lead management
+* Project briefs
+* Email approval queue
+* Escalation management
+* Metrics
+* CSV export
+* Optional CRM mirror:
+
+  * Airtable
+  * HubSpot
+* The application's own database remains the system of record
+* Guardrails:
+
+  * No fabricated pricing
+  * Commitment-language disclaimers
+  * Sensitive-data rejection
+  * Per-session rate limits
+  * Per-IP rate limits
+* Per-conversation OpenRouter cost tracking
+
+---
+
+## Quick Start
+
+You need three services before the application can operate fully:
+
+1. PostgreSQL with `pgvector`
+2. OpenRouter API key
+3. Google Gemini API key for embeddings
+
+All three have usable free tiers.
+
+### 1. Database — Neon
+
+Create a free project on [Neon](https://neon.tech/).
+
+Copy the **pooled** connection string from the Neon dashboard.
+
+The hostname should contain `-pooler`.
+
+### 2. Chat — OpenRouter
+
+Create an API key through [OpenRouter](https://openrouter.ai/keys).
+
+### 3. Embeddings — Google AI Studio
+
+Create a free API key through [Google AI Studio](https://aistudio.google.com/apikey).
+
+Without the Gemini key, the application still boots and can answer greetings and general questions. However, it cannot ground answers in the knowledge base until embeddings are available.
+
+### Local Setup
 
 ```bash
 cd backend
+
 cp .env.example .env
-# set DATABASE_URL, OPENROUTER_API_KEY, GOOGLE_API_KEY, ADMIN_API_KEY
+
+# Configure:
+# DATABASE_URL
+# OPENROUTER_API_KEY
+# GOOGLE_API_KEY
+# ADMIN_API_KEY
+
 pip install -r requirements.txt
+
 uvicorn app.main:app --reload
 ```
 
-Open `http://localhost:8000/widget/` for the public widget, or
-`http://localhost:8000/dashboard/` for the team dashboard. First boot creates the
-Postgres tables and pgvector extension automatically, then indexes the static knowledge
-base and crawls the live site about 30 seconds later.
+Then open:
 
-### Client portal (Phase 3)
+* Public widget: `http://localhost:8000/widget/`
+* Team dashboard: `http://localhost:8000/dashboard/`
 
-```bash
-cd backend
-python -m app.seed_client --email you@example.com --name "You" --company "Acme Ltd"
-```
+On first boot, the application:
 
-Then open `http://localhost:8000/widget/client.html` and sign in with that email. With no
-email provider configured the API returns the magic-link token directly so the flow is
-testable locally — it never does this once `EMAIL_PROVIDER` is set.
-
-### Tests
-
-```bash
-cd backend
-python -m pytest          # 129 tests, no network or API keys required
-```
-
-Tests run against a real, throwaway embedded Postgres instance (via the `pgserver`
-package — no Docker or local Postgres install needed) rather than mocks, since the SQL
-itself (upserts, pgvector queries, JSONB filters) is exactly what needs checking. LLM
-calls go through a fake router; embeddings go through a deterministic fake so relevance
-ranking is still meaningful.
+1. Creates the required PostgreSQL tables
+2. Creates the `pgvector` extension
+3. Indexes the static knowledge base
+4. Starts crawling the live website approximately 30 seconds later
 
 ---
 
-## Architecture
+## Client Portal
 
+The client portal is part of Phase 3.
+
+Create a test client:
+
+```bash
+cd backend
+
+python -m app.seed_client \
+  --email you@example.com \
+  --name "You" \
+  --company "Acme Ltd"
 ```
+
+Then open:
+
+```text
+http://localhost:8000/widget/client.html
+```
+
+Sign in using the seeded email address.
+
+If no email provider is configured, the API returns the magic-link token directly so the flow can be tested locally.
+
+Once `EMAIL_PROVIDER` is configured, the token is no longer returned directly.
+
+---
+
+## Tests
+
+Run the complete test suite:
+
+```bash
+cd backend
+
+python -m pytest
+```
+
+The project currently contains **129 tests**.
+
+Tests require no network access or API keys.
+
+The test suite uses a real, throwaway embedded PostgreSQL instance through the `pgserver` package instead of mocks.
+
+This is intentional because the application relies heavily on:
+
+* SQL upserts
+* PostgreSQL transactions
+* `pgvector` queries
+* JSONB filters
+* Database constraints
+
+LLM calls use a fake router, while embeddings use a deterministic fake implementation so relevance ranking can still be tested.
+
+---
+
+# Architecture
+
+```text
                     ┌────────────────────────────────────────┐
-                    │            Framer website               │
+                    │             Framer Website              │
+                    │                                        │
                     │  ┌──────────────┐   ┌───────────────┐  │
-                    │  │ public widget│   │ client widget │  │
+                    │  │ Public Widget│   │ Client Widget │  │
                     │  │ data-mode=   │   │ data-mode=    │  │
                     │  │ "public"     │   │ "client"      │  │
                     │  └──────┬───────┘   └───────┬───────┘  │
                     └─────────┼───────────────────┼──────────┘
                               │ /api/chat         │ /api/client/*
+                              │                   │
                     ┌─────────▼───────────────────▼──────────┐
-                    │      FastAPI on Vercel (serverless)     │
-                    │                                         │
-                    │   ┌─────────────────────────────────┐  │
-                    │   │       Chat Orchestrator          │  │
-                    │   │  intent → route → persist → CRM  │  │
-                    │   └──┬────┬────┬────┬────┬──────────┘  │
-                    │      │    │    │    │    │              │
-                    │    RAG  Qual Intake Book Client         │
-                    │      │    │    │         support        │
-                    │      │    │    │           │            │
-                    │  ┌───▼────▼────▼───────────▼─────────┐ │
-                    │  │      Neon Postgres + pgvector      │ │
-                    │  │  sessions/leads/briefs/emails/...  │ │
-                    │  │  public_documents · client_documents│ │
-                    │  │        (never queried together)     │ │
-                    │  └─────────────────────────────────────┘ │
-                    │                                         │
-                    │  Gemini (embeddings) · OpenRouter (chat)│
-                    │  Vercel Cron → /api/cron/* (scheduled)  │
-                    └─────────────────────────────────────────┘
+                    │       FastAPI on Vercel (Serverless)    │
+                    │                                        │
+                    │  ┌─────────────────────────────────┐   │
+                    │  │       Chat Orchestrator          │   │
+                    │  │                                 │   │
+                    │  │ intent → route → persist → CRM  │   │
+                    │  └──┬────┬────┬────┬────┬─────────┘   │
+                    │     │    │    │    │    │             │
+                    │    RAG  Qual Intake Book Client        │
+                    │     │    │    │         Support        │
+                    │     │    │    │           │            │
+                    │  ┌──▼────▼────▼───────────▼─────────┐  │
+                    │  │       Neon PostgreSQL + pgvector │  │
+                    │  │                                  │  │
+                    │  │ sessions/leads/briefs/emails/... │  │
+                    │  │                                  │  │
+                    │  │ public_documents                  │  │
+                    │  │ client_documents                  │  │
+                    │  │                                  │  │
+                    │  │   Never queried together         │  │
+                    │  └──────────────────────────────────┘  │
+                    │                                        │
+                    │ Gemini (embeddings) · OpenRouter (chat)│
+                    │ Vercel Cron → /api/cron/*             │
+                    └────────────────────────────────────────┘
 ```
 
-### Model routing
+---
 
-| Task | Primary | Fallback |
-|---|---|---|
-| Intent classification | `llama-3.1-8b-instruct:free` | `gemini-2.0-flash-exp:free` |
-| RAG answers, qualification | `gemini-2.0-flash-exp:free` | `gemini-2.5-flash` |
-| Intake reasoning, service matching, briefs | `gemini-2.5-flash` | `claude-haiku-4.5` |
-| Client support | `gemini-2.5-flash` | `claude-haiku-4.5` |
-| Embeddings (RAG indexing + retrieval) | Gemini `text-embedding-004` | — |
+## Model Routing
 
-Any structured LLM call that returns malformed JSON is retried once on the stronger model
-before the deterministic fallback takes over, so a cheap model failing never dead-ends a
-conversation. A missing or failing embedding provider degrades the same way — RAG answers
-fall back to an honest "I don't know" instead of crashing the request.
+| Task                                       | Primary Model                | Fallback                    |
+| ------------------------------------------ | ---------------------------- | --------------------------- |
+| Intent classification                      | `llama-3.1-8b-instruct:free` | `gemini-2.0-flash-exp:free` |
+| RAG answers, qualification                 | `gemini-2.0-flash-exp:free`  | `gemini-2.5-flash`          |
+| Intake reasoning, service matching, briefs | `gemini-2.5-flash`           | `claude-haiku-4.5`          |
+| Client support                             | `gemini-2.5-flash`           | `claude-haiku-4.5`          |
+| Embeddings                                 | `text-embedding-004`         | —                           |
+
+Structured LLM calls that return malformed JSON are retried once using the stronger fallback model.
+
+If the retry also fails, the application uses a deterministic fallback where available.
+
+A missing or failing embedding provider follows the same degradation strategy:
+
+```text
+Embedding failure
+       ↓
+No crash
+       ↓
+No unsupported answer
+       ↓
+Honest "I don't know"
+```
 
 ---
 
-## API
+# API
 
-### Public
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/chat` | Send a chat message |
-| `POST` | `/api/sessions/{id}/end` | Close a session (summarise + CRM sync) |
-| `GET` | `/api/chats` · `/chats/{id}` | Visitor's own chat list / transcript |
-| `DELETE` | `/api/data` | Delete data by email, session id, or visitor id |
-| `GET` | `/health` | Health check; the widget uses this to degrade gracefully |
+## Public API
 
-### Client portal (bearer token)
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/client/login` | Request a magic link |
-| `POST` | `/api/client/verify` | Redeem a link for a session token |
-| `POST` | `/api/client/chat` | Authenticated support chat |
-| `GET` | `/api/client/me` | Profile and projects |
-| `POST` | `/api/client/logout` | Revoke the session token |
-
-### Admin (`X-Admin-Key` header)
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/admin/leads` · `/leads.csv` | Lead list and CSV export |
-| `GET` | `/api/admin/metrics` | PRD Section 10 metrics |
-| `GET` | `/api/admin/sessions/{id}` | Transcript, lead and brief |
-| `GET` | `/api/admin/briefs` | Intake briefs |
-| `GET` | `/api/admin/emails` · `POST /emails/approve` | Email approval queue |
-| `GET` | `/api/admin/escalations` | Open human hand-offs |
-| `POST` | `/api/admin/reindex` | Re-index (wire to a publish webhook) |
-| `POST` | `/api/admin/crm-sync` | Mirror leads to the configured CRM |
-| `POST` | `/api/admin/clients` · `/clients/{id}/projects` | Manage client portal data |
-
-If `ADMIN_API_KEY` is unset, every admin route returns 503 — the lead database is never
-left open by default.
-
-### Scheduled jobs (`Authorization: Bearer <CRON_SECRET>`, or the admin key)
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/cron/reindex` | Daily public knowledge base re-index |
-| `GET` | `/api/cron/crm-sync` | Mirror leads to the configured CRM |
-| `GET` | `/api/cron/sweep` | Finalize abandoned sessions, purge expired tokens |
-
-Vercel Cron hits these on the schedule in `vercel.json` and sends the bearer token
-automatically once `CRON_SECRET` is set as a project env var. On any always-on host
-(Render, Docker, etc.) these are redundant — the same work also runs as an in-process
-background loop there, and self-disables on Vercel (detected via the `VERCEL` env var).
+| Method   | Path                     | Description                                              |
+| -------- | ------------------------ | -------------------------------------------------------- |
+| `POST`   | `/api/chat`              | Send a chat message                                      |
+| `POST`   | `/api/sessions/{id}/end` | Close a session, summarize it, and sync with CRM         |
+| `GET`    | `/api/chats`             | Get visitor's chat list                                  |
+| `GET`    | `/api/chats/{id}`        | Get visitor's transcript                                 |
+| `DELETE` | `/api/data`              | Delete data by email, session ID, or visitor ID          |
+| `GET`    | `/health`                | Health check used by the widget for graceful degradation |
 
 ---
 
-## Framer embed
+## Client Portal API
 
-Public pages:
+All client portal requests require a bearer token where applicable.
+
+| Method | Path                 | Description                             |
+| ------ | -------------------- | --------------------------------------- |
+| `POST` | `/api/client/login`  | Request a magic link                    |
+| `POST` | `/api/client/verify` | Redeem a magic link for a session token |
+| `POST` | `/api/client/chat`   | Authenticated client support chat       |
+| `GET`  | `/api/client/me`     | Get client profile and projects         |
+| `POST` | `/api/client/logout` | Revoke the current session token        |
+
+---
+
+## Admin API
+
+Admin endpoints require the `X-Admin-Key` header.
+
+| Method | Path                               | Description                        |
+| ------ | ---------------------------------- | ---------------------------------- |
+| `GET`  | `/api/admin/leads`                 | Get lead list                      |
+| `GET`  | `/api/admin/leads.csv`             | Export leads as CSV                |
+| `GET`  | `/api/admin/metrics`               | Get PRD Section 10 metrics         |
+| `GET`  | `/api/admin/sessions/{id}`         | Get transcript, lead, and brief    |
+| `GET`  | `/api/admin/briefs`                | Get intake briefs                  |
+| `GET`  | `/api/admin/emails`                | Get email approval queue           |
+| `POST` | `/api/admin/emails/approve`        | Approve a queued email             |
+| `GET`  | `/api/admin/escalations`           | Get open human hand-offs           |
+| `POST` | `/api/admin/reindex`               | Re-index the knowledge base        |
+| `POST` | `/api/admin/crm-sync`              | Mirror leads to the configured CRM |
+| `POST` | `/api/admin/clients`               | Create/manage client portal users  |
+| `POST` | `/api/admin/clients/{id}/projects` | Add project data for a client      |
+
+If `ADMIN_API_KEY` is not configured, all admin routes return `503`.
+
+This prevents the lead database from being exposed by default.
+
+---
+
+## Scheduled Jobs
+
+Scheduled endpoints require:
+
+```http
+Authorization: Bearer <CRON_SECRET>
+```
+
+The admin API key can also be used.
+
+| Method | Path                 | Description                                          |
+| ------ | -------------------- | ---------------------------------------------------- |
+| `GET`  | `/api/cron/reindex`  | Daily public knowledge-base re-index                 |
+| `GET`  | `/api/cron/crm-sync` | Mirror leads to the configured CRM                   |
+| `GET`  | `/api/cron/sweep`    | Finalize abandoned sessions and purge expired tokens |
+
+Vercel Cron calls these endpoints according to the schedule defined in `vercel.json`.
+
+Once `CRON_SECRET` is configured as a project environment variable, Vercel automatically sends the required bearer token.
+
+On always-on hosts such as Render or Docker-based deployments, these endpoints are redundant.
+
+The same scheduled work also runs through the in-process background loop and automatically disables itself on Vercel when the `VERCEL` environment variable is detected.
+
+---
+
+# Framer Embed
+
+## Public Widget
+
+Add the following script to public Framer pages:
 
 ```html
 <script
@@ -215,7 +378,9 @@ Public pages:
 </script>
 ```
 
-Client portal page only:
+## Client Portal Widget
+
+Use the client mode only on the dedicated client portal page:
 
 ```html
 <script
@@ -225,108 +390,233 @@ Client portal page only:
 </script>
 ```
 
-Set `CORS_ORIGINS` to the Framer domain and `CLIENT_PORTAL_URL` to the page hosting the
-client widget — magic links point there.
+Configure the following environment variables:
+
+```env
+CORS_ORIGINS=https://your-framer-domain.com
+CLIENT_PORTAL_URL=https://your-framer-domain.com/client
+```
+
+`CLIENT_PORTAL_URL` determines where magic links redirect users.
 
 ---
 
-## Deployment
+# Deployment
 
-### Vercel + Neon (recommended)
+## Vercel + Neon
 
-1. **Neon**: create a free project, enable the `vector` extension is automatic (the app
-   runs `CREATE EXTENSION IF NOT EXISTS vector` itself on first connect — the default
-   Neon role has permission). Copy the **pooled** connection string.
-2. **Vercel**: import the repo, set these project environment variables, then deploy —
-   `vercel.json` and `api/index.py` handle the rest.
+This is the recommended deployment configuration.
 
-   | Variable | Required | Notes |
-   |---|---|---|
-   | `DATABASE_URL` | yes | Neon's pooled connection string |
-   | `OPENROUTER_API_KEY` | yes | chat generation |
-   | `GOOGLE_API_KEY` | yes | embeddings (RAG grounding) |
-   | `ADMIN_API_KEY` | yes | protects `/api/admin/*` |
-   | `CRON_SECRET` | recommended | lets Vercel Cron call `/api/cron/*` |
-   | everything else in `.env.example` | optional | email/CRM providers, Calendly, CORS, etc. |
+### 1. Create the Neon Database
 
-3. Vercel serves `widget/` and `dashboard/` as static files directly (fast, free, no
-   function invocation) and routes everything else to `api/index.py`. The FastAPI app
-   also mounts those same directories itself as a fallback, so it works correctly either
-   way — verify `/widget/` loads after your first deploy.
+Create a Neon project and use the pooled connection string.
 
-**Known Vercel constraints, not app bugs:**
-- **Hobby plan caps function execution at 10 seconds** and Cron Jobs at once-daily.
-  The Phase 2 brief-generation flow chains a few LLM calls and can occasionally run
-  close to that ceiling — if you hit timeouts, Vercel Pro raises both limits (this repo's
-  `vercel.json` already requests `maxDuration: 60`, which only takes effect on Pro).
-- **No WebSocket support in serverless functions.** The `/ws/chat` endpoint from earlier
-  versions of this app is gone — the widget only ever used the REST `/api/chat` endpoint,
-  so nothing was lost, but a future contributor shouldn't be surprised it's missing.
-- **No local disk.** Nothing in the app writes anywhere except `/tmp` (ephemeral) and
-  Neon — this was true after the Postgres/pgvector migration regardless of host, so
-  Vercel's read-only filesystem isn't a special case to work around.
+The application automatically runs:
 
-### Alternative: Docker on Render (or any container host)
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
 
-Same codebase, same Neon database — just a different, always-on-while-warm host instead
-of serverless. Useful if you outgrow Vercel's execution-time limits before upgrading to
-Pro, or just prefer a persistent process.
+The default Neon role should have permission to create the extension.
+
+### 2. Deploy to Vercel
+
+Import the repository into Vercel.
+
+The repository already contains:
+
+* `vercel.json`
+* `api/index.py`
+
+These handle the serverless deployment.
+
+### Environment Variables
+
+| Variable                          | Required    | Description                                        |
+| --------------------------------- | ----------- | -------------------------------------------------- |
+| `DATABASE_URL`                    | Yes         | Neon pooled PostgreSQL connection string           |
+| `OPENROUTER_API_KEY`              | Yes         | Chat generation                                    |
+| `GOOGLE_API_KEY`                  | Yes         | Gemini embeddings                                  |
+| `ADMIN_API_KEY`                   | Yes         | Protects admin endpoints                           |
+| `CRON_SECRET`                     | Recommended | Authenticates Vercel Cron requests                 |
+| Everything else in `.env.example` | Optional    | Email, CRM, Calendly, CORS, and other integrations |
+
+### Static Files
+
+Vercel serves:
+
+```text
+/widget/
+/dashboard/
+```
+
+as static assets.
+
+Everything else is routed to:
+
+```text
+api/index.py
+```
+
+The FastAPI application also mounts the same directories as a fallback.
+
+After deployment, verify that:
+
+```text
+https://YOUR-DOMAIN/widget/
+```
+
+loads successfully.
+
+---
+
+## Vercel Constraints
+
+These are platform constraints rather than application bugs.
+
+### Function Execution Limits
+
+The Vercel Hobby plan limits function execution to approximately 10 seconds.
+
+The Phase 2 brief-generation flow chains several LLM calls and may approach this limit.
+
+The repository already requests:
+
+```json
+{
+  "maxDuration": 60
+}
+```
+
+in `vercel.json`.
+
+This takes effect only on plans that support the requested duration, such as Vercel Pro.
+
+### WebSockets
+
+Vercel serverless functions do not provide traditional WebSocket support.
+
+The previous `/ws/chat` endpoint has been removed.
+
+The widget only used:
+
+```text
+POST /api/chat
+```
+
+over REST, so no current functionality was lost.
+
+### Filesystem
+
+Vercel's filesystem is read-only except for ephemeral `/tmp` storage.
+
+The application does not depend on persistent local files.
+
+Persistent data is stored in Neon.
+
+---
+
+# Alternative Deployment: Docker + Render
+
+The same application can run on Render or another container host.
+
+This uses the same Neon database while replacing Vercel's serverless runtime with an always-on container while warm.
+
+This can be useful if:
+
+* Vercel execution limits become restrictive
+* You do not want to upgrade to Vercel Pro
+* You prefer a persistent application process
+
+Build the image from the repository root:
 
 ```bash
-docker build -t abacus-bot .     # build context must be the repo root
-docker run -p 8000:8000 --env-file backend/.env abacus-bot
+docker build -t abacus-bot .
 ```
 
-`render.yaml` deploys the same image on Render's free tier. Free instances spin down
-after ~15 minutes idle, so the first message after a quiet period pays a cold start —
-the widget shows a typing indicator throughout, and falls back to the contact form if the
-backend is unreachable. Unlike Vercel, the in-process background loops (re-index, CRM
-sync, session sweep) run natively here — the `/api/cron/*` endpoints are simply unused.
+Run locally:
+
+```bash
+docker run \
+  -p 8000:8000 \
+  --env-file backend/.env \
+  abacus-bot
+```
+
+The included `render.yaml` can be used for Render deployment.
+
+### Render Free Tier
+
+Free Render instances spin down after approximately 15 minutes of inactivity.
+
+The first request after inactivity may therefore experience a cold start.
+
+The widget displays a typing indicator while waiting and falls back to the contact form if the backend cannot be reached.
+
+Unlike Vercel, in-process background loops run natively on the container:
+
+* Re-indexing
+* CRM synchronization
+* Session sweeping
+
+Therefore, `/api/cron/*` endpoints are not required for this deployment model.
 
 ---
 
-## Project structure
+# Project Structure
 
-```
+```text
+.
 ├── api/
-│   └── index.py                 # Vercel entrypoint — re-exports the FastAPI app
+│   └── index.py
+│
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI app: public, client, admin, and cron APIs
-│   │   ├── config.py            # Settings, model routing, prompts
-│   │   ├── models.py            # Pydantic models + lead field whitelist
-│   │   ├── database.py          # Postgres (asyncpg): sessions, leads, briefs, clients
-│   │   ├── vector_store.py      # pgvector, namespaced public vs client tables
-│   │   ├── embeddings.py        # Gemini embeddings API client
-│   │   ├── knowledge_base.py    # Static KB from the company doc
-│   │   ├── site_crawler.py      # Live site crawl → RAG chunks
-│   │   ├── indexer.py           # Index building + re-index scheduler
-│   │   ├── rag_engine.py        # Public and client retrieval (never mixed)
-│   │   ├── llm_router.py        # OpenRouter routing, JSON repair, cost tracking
-│   │   ├── intent_classifier.py # Keyword fast path + LLM fallback
-│   │   ├── lead_qualifier.py    # Slot filling + weighted scoring
-│   │   ├── intake_agent.py      # Phase 2 discovery, matching, brief generation
-│   │   ├── booking_handler.py   # Calendly hand-off
-│   │   ├── client_support.py    # Phase 3 support + escalation
-│   │   ├── auth.py              # Magic links, client sessions, admin/cron guards
-│   │   ├── email_service.py     # Resend/Brevo + approval queue
-│   │   ├── crm_sync.py          # Airtable/HubSpot mirror
-│   │   ├── guardrails.py        # Safety + rate limiting
-│   │   ├── chat_orchestrator.py # State machine
-│   │   └── seed_client.py       # CLI to seed a portal client
-│   ├── dashboard/index.html     # Internal team dashboard
-│   └── tests/                   # 129 tests, run against a real embedded Postgres
-├── widget/                      # Embeddable widget (public + client modes)
-├── vercel.json                  # Routing + Cron schedule
-├── requirements.txt              # Points at backend/requirements.txt (Vercel needs root)
-├── Dockerfile · render.yaml · Procfile   # Alternative: always-on container host
-└── PRD.md
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── models.py
+│   │   ├── database.py
+│   │   ├── vector_store.py
+│   │   ├── embeddings.py
+│   │   ├── knowledge_base.py
+│   │   ├── site_crawler.py
+│   │   ├── indexer.py
+│   │   ├── rag_engine.py
+│   │   ├── llm_router.py
+│   │   ├── intent_classifier.py
+│   │   ├── lead_qualifier.py
+│   │   ├── intake_agent.py
+│   │   ├── booking_handler.py
+│   │   ├── client_support.py
+│   │   ├── auth.py
+│   │   ├── email_service.py
+│   │   ├── crm_sync.py
+│   │   ├── guardrails.py
+│   │   ├── chat_orchestrator.py
+│   │   └── seed_client.py
+│   │
+│   ├── dashboard/
+│   │   └── index.html
+│   │
+│   └── tests/
+│
+├── widget/
+│   └── ...
+│
+├── vercel.json
+├── requirements.txt
+├── Dockerfile
+├── render.yaml
+├── Procfile
+├── PRD.md
+└── README.md
 ```
 
 ---
 
-## Known limitations
+# Knowledge & Retrieval Architecture
 
+<<<<<<< Updated upstream
 - **Live end-to-end generation against Neon is exercised via a local embedded Postgres,
   not Neon itself.** The SQL, pgvector queries, and full request lifecycle are all
   verified against a real Postgres server (not mocks) — but this session never had a
@@ -340,3 +630,350 @@ sync, session sweep) run natively here — the `/api/cron/*` endpoints are simpl
   exact response shape has since changed.
 - **Email and CRM mirroring are off by default.** Both need credentials; until they're
   set, follow-ups queue in the dashboard and nothing is mirrored.
+=======
+The application uses two independent knowledge namespaces.
+
+```text
+                         User Request
+                              │
+                              ▼
+                       Intent / Auth Check
+                              │
+                 ┌────────────┴────────────┐
+                 │                         │
+            Public User               Client User
+                 │                         │
+                 ▼                         ▼
+       public_documents            client_documents
+                 │                         │
+                 │                  WHERE client_id = ?
+                 │                         │
+                 └────────────┬────────────┘
+                              │
+                              ▼
+                        Context Retrieval
+                              │
+                              ▼
+                         LLM Generation
+```
+
+The public and client indexes are deliberately separated.
+
+Client project information is never retrieved merely because a metadata field happens to contain a matching client ID.
+
+Instead, the database query applies an explicit indexed:
+
+```sql
+client_id
+```
+
+filter.
+
+The public and client indexes are also never queried in the same retrieval call.
+
+---
+
+# Lead Qualification
+
+Leads are scored using the following weighted model:
+
+| Factor    |   Weight |
+| --------- | -------: |
+| Budget    |      30% |
+| Timeline  |      25% |
+| Authority |      25% |
+| Fit       |      20% |
+| **Total** | **100%** |
+
+The qualification system progressively captures information during conversation rather than requiring a static form.
+
+Qualified leads can be handed off to Calendly for discovery-call booking.
+
+---
+
+# Agentic Project Intake
+
+The intake agent collects:
+
+* Project goals
+* Current state
+* Constraints
+* Budget
+* Timeline
+* Success criteria
+
+It then:
+
+1. Matches the project against Abacus Digital's service capabilities.
+2. Determines whether multiple services should be bundled.
+3. Provides an explicit rationale for the recommendation.
+4. Generates a structured `ProjectBrief`.
+5. Identifies risk flags.
+6. Identifies unresolved questions.
+7. Drafts a follow-up email.
+
+Follow-up emails are **not automatically sent**.
+
+They enter the dashboard approval queue for human review.
+
+---
+
+# Client Support & Authentication
+
+The client portal uses passwordless magic-link authentication.
+
+Authentication properties:
+
+* Single-use links
+* 20-minute expiration
+* Opaque server-side session tokens
+* Bearer authentication for protected client endpoints
+* Explicit logout/revocation
+
+Client project data is stored separately from public knowledge.
+
+Commercial, contractual, or unresolvable questions are escalated to a human account manager rather than being answered speculatively.
+
+---
+
+# Guardrails
+
+The chatbot implements several safeguards.
+
+### Pricing
+
+The chatbot does not fabricate prices.
+
+If pricing is unavailable from the knowledge base, it should state that pricing requires confirmation from the Abacus Digital team.
+
+### Commitments
+
+The chatbot does not make unauthorized commitments regarding:
+
+* Delivery dates
+* Scope
+* Contracts
+* Guarantees
+* Commercial terms
+
+### Sensitive Data
+
+Sensitive information is rejected rather than stored or processed unnecessarily.
+
+### Rate Limiting
+
+Rate limits are applied at both:
+
+* Session level
+* IP level
+
+### RAG Failure
+
+When retrieval does not provide sufficient evidence, the system does not invent an answer.
+
+It returns an honest uncertainty response.
+
+---
+
+# CRM Integration
+
+CRM mirroring is optional.
+
+Supported integrations include:
+
+* Airtable
+* HubSpot
+
+The application database remains the **system of record**.
+
+CRM synchronization is therefore treated as a mirror rather than the authoritative data source.
+
+If CRM credentials are not configured, leads remain available inside the internal dashboard.
+
+---
+
+# Email Workflow
+
+Email generation supports providers such as:
+
+* Resend
+* Brevo
+
+The default workflow is:
+
+```text
+Conversation
+     ↓
+Project Brief
+     ↓
+Follow-up Email Draft
+     ↓
+Dashboard Approval Queue
+     ↓
+Human Approval
+     ↓
+Email Provider
+     ↓
+Client
+```
+
+Email sending is not automatic by default.
+
+---
+
+# Cost Tracking
+
+The application records actual OpenRouter usage per conversation.
+
+This allows the dashboard to track:
+
+* Model usage
+* Token usage
+* Estimated generation cost
+* Cost per conversation
+
+This is especially important when using multiple model tiers and fallbacks.
+
+---
+
+# Environment Configuration
+
+Copy the example environment file:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+At minimum, configure:
+
+```env
+DATABASE_URL=
+OPENROUTER_API_KEY=
+GOOGLE_API_KEY=
+ADMIN_API_KEY=
+```
+
+Recommended:
+
+```env
+CRON_SECRET=
+```
+
+Optional integrations may include:
+
+```env
+EMAIL_PROVIDER=
+RESEND_API_KEY=
+BREVO_API_KEY=
+
+CALENDLY_URL=
+
+AIRTABLE_API_KEY=
+HUBSPOT_ACCESS_TOKEN=
+
+CORS_ORIGINS=
+CLIENT_PORTAL_URL=
+```
+
+Refer to `.env.example` for the complete configuration surface.
+
+---
+
+# Known Limitations
+
+## Neon Has Not Been Live-Tested
+
+The complete request lifecycle and SQL behavior have been tested against a real embedded PostgreSQL instance.
+
+However, the application has not been tested against a live Neon connection string.
+
+The expectation is that this should work without modification because Neon provides standard PostgreSQL with `pgvector`.
+
+This remains the primary unverified deployment-specific component.
+
+## Gemini Embeddings Have Not Been Live-Tested
+
+The embedding client, retry logic, batching, and request structure have been implemented against the Gemini API specification.
+
+However, a live Gemini embedding API key was not available during development.
+
+After configuring `GOOGLE_API_KEY`, verify that:
+
+1. Indexing completes successfully.
+2. Embeddings are stored correctly.
+3. Retrieval returns relevant chunks.
+4. RAG responses contain appropriate source citations.
+
+If the Gemini response schema has changed, `backend/app/embeddings.py` may require adjustment.
+
+## Email and CRM Integrations Are Disabled by Default
+
+Email and CRM mirroring require external credentials.
+
+Until those credentials are configured:
+
+* Follow-up emails remain in the dashboard approval queue.
+* No emails are sent.
+* No leads are mirrored to external CRM systems.
+
+---
+
+# Development Notes
+
+The application is designed to degrade gracefully.
+
+```text
+Missing embedding provider
+        ↓
+RAG unavailable
+        ↓
+No fabricated answer
+        ↓
+Honest fallback response
+```
+
+Similarly, a weak model failing to produce valid structured output does not necessarily terminate the request:
+
+```text
+Primary model
+     ↓
+Malformed JSON?
+     ↓
+Retry with stronger model
+     ↓
+Still invalid?
+     ↓
+Deterministic fallback
+```
+
+This architecture prioritizes reliability and correctness over maximum model autonomy.
+
+---
+
+# Status
+
+| Phase                      | Status      |
+| -------------------------- | ----------- |
+| Phase 1 — Foundation       | Implemented |
+| Phase 2 — Agentic Intake   | Implemented |
+| Phase 3 — Client Support   | Implemented |
+| Internal Dashboard         | Implemented |
+| Public RAG                 | Implemented |
+| Live Site Crawler          | Implemented |
+| Lead Qualification         | Implemented |
+| Calendly Booking           | Implemented |
+| Project Brief Generation   | Implemented |
+| Client Authentication      | Implemented |
+| Client Knowledge Isolation | Implemented |
+| Human Escalation           | Implemented |
+| Email Approval Queue       | Implemented |
+| CRM Mirror                 | Optional    |
+| Neon Live Verification     | Pending     |
+| Gemini Live Verification   | Pending     |
+
+---
+
+# License
+
+Private project for **Abacus Digital Pvt. Ltd.**
+
