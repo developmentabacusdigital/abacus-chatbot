@@ -30,7 +30,10 @@ from .guardrails import content_guardrails
 from .llm_router import llm_router
 from .email_service import email_service, is_valid_email
 from .email_capture import extract_email, looks_like_decline, strip_email, EMAIL_ASK, FOUND_ACK, DECLINE_ACK
-from .suggestions import suggestions_for_field, GREETING_SUGGESTIONS, EMAIL_ASK_SUGGESTIONS
+from .suggestions import (
+    suggestions_for_field, GREETING_SUGGESTIONS, EMAIL_ASK_SUGGESTIONS,
+    QUESTION_FOLLOWUP_SUGGESTIONS, SELF_SERVE_SUGGESTIONS, FAREWELL_SUGGESTIONS,
+)
 from .crm_sync import crm_sync
 from .database import db
 
@@ -608,7 +611,20 @@ What brings you here today?"""
             "source_link": result.get("source_link"),
             "model_used": result["model_used"],
             "cost": result["cost"],
+            "suggestions": self._followup_suggestions(result),
         }
+
+    @staticmethod
+    def _followup_suggestions(rag_result: Dict[str, Any]) -> List[str]:
+        """
+        Deterministic (no extra LLM call) follow-up chips for a RAG answer — tailored to
+        whatever it was grounded in when we have a source, a generic-but-relevant set
+        when we don't. Every RAG turn gets something rather than a chip-less dead end.
+        """
+        sources = rag_result.get("sources") or []
+        if sources:
+            return [f"Tell me more about {sources[0]}", "Book a call", "See other services"]
+        return QUESTION_FOLLOWUP_SUGGESTIONS
 
     async def _handle_qualification(self, message: str, state: ConversationState) -> Dict[str, Any]:
         """Handle conversational lead qualification."""
@@ -635,6 +651,7 @@ What brings you here today?"""
             response["show_booking"] = booking["show_booking"]
             if booking["show_booking"]:
                 response["booking_url"] = booking["booking_url"]
+                response["suggestions"] = ["Ask another question", "That's all, thanks"]
                 state.booking_offered = True
                 await db.update_session(state.session_id, status=SessionStatus.QUALIFIED.value)
                 await self._maybe_email_booking(state)
@@ -646,10 +663,11 @@ What brings you here today?"""
             response["message"] += "\n\n" + booking_handler.generate_self_serve_response(
                 state.qualification_data
             )
+            response["suggestions"] = SELF_SERVE_SUGGESTIONS
         else:
-            # Still filling in fields — offer chips for whatever's asked next
-            next_field = lead_qualifier.next_missing_field(state.qualification_data)
-            response["suggestions"] = suggestions_for_field(next_field)
+            # The qualifier already generated suggestions matched to whatever it just
+            # asked (with a field-based fallback baked in) — use them as-is.
+            response["suggestions"] = result.get("suggestions", [])
 
         return response
 
@@ -680,9 +698,9 @@ What brings you here today?"""
             "model_used": turn["model_used"],
             "cost": cost,
             "intent_override": Intent.PROJECT_INTAKE,
-            "suggestions": suggestions_for_field(
-                intake_agent.next_missing_field(state.intake_data)
-            ),
+            # Generated alongside the question intake_agent just asked, so it can't
+            # drift out of sync with it the way a field-order guess could.
+            "suggestions": turn.get("suggestions", []),
         }
 
         if turn["discovery_complete"] and not state.brief_generated:
@@ -720,9 +738,11 @@ What brings you here today?"""
             response["show_booking"] = booking["show_booking"]
             if booking["show_booking"]:
                 response["booking_url"] = booking["booking_url"]
+                response["suggestions"] = ["Ask another question", "That's all, thanks"]
+            else:
+                response["suggestions"] = []
             response["brief_ready"] = True
             response["cost"] = cost
-            response["suggestions"] = []
             state.booking_offered = True
 
             await self._email_brief(state, brief)
@@ -747,9 +767,10 @@ What brings you here today?"""
             "booking_url": booking["booking_url"],
             "model_used": "template",
             "cost": 0.0,
+            # A required email ask has no sensible multiple-choice chips; once the
+            # actual link is shown, offer a couple of ways to keep the chat going.
+            "suggestions": [] if not booking["show_booking"] else ["Ask another question", "That's all, thanks"],
         }
-        if not booking["show_booking"]:
-            result["suggestions"] = []
         return result
 
     async def _handle_farewell(self, message: str, state: ConversationState) -> Dict[str, Any]:
@@ -764,7 +785,12 @@ What brings you here today?"""
 
         await self.finalize_session(state.session_id, SessionStatus.COMPLETED)
 
-        return {"message": farewell, "model_used": "template", "cost": 0.0}
+        return {
+            "message": farewell,
+            "model_used": "template",
+            "cost": 0.0,
+            "suggestions": FAREWELL_SUGGESTIONS,
+        }
 
     async def _handle_data_deletion(self, message: str, state: ConversationState) -> Dict[str, Any]:
         """Handle data deletion requests (PRD 7.5)."""
@@ -827,6 +853,7 @@ What brings you here today?"""
                 "source_link": rag_result.get("source_link"),
                 "model_used": rag_result["model_used"],
                 "cost": rag_result["cost"],
+                "suggestions": self._followup_suggestions(rag_result),
             }
 
         memory_note = f"\n\n{state.visitor_memory}" if state.visitor_memory else ""
@@ -855,6 +882,7 @@ Be concise and friendly.""",
             "message": result["content"],
             "model_used": result["model_used"],
             "cost": result["cost"],
+            "suggestions": GREETING_SUGGESTIONS,
         }
 
     # --- Session close-out ---

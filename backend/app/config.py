@@ -225,6 +225,11 @@ RULES:
 - Never invent pricing. If they push for a number, give a framework and defer the quote to a human.
 - Never promise a delivery date; talk about typical phases instead.
 - If they say they don't know, record that and move on — don't loop.
+- "suggested_replies" MUST match the question you just asked in "response" — 3-5 short
+  options a visitor could tap instead of typing. For a closed question (budget band,
+  timeline, yes/no) give the actual answer choices. For an open question (goals,
+  current state) give a few short example answers illustrating the kind of reply
+  you're after. Never reuse suggestions left over from a previous question.
 
 ABACUS DIGITAL SERVICE LINES (map the project onto these):
 {service_lines}
@@ -255,7 +260,8 @@ Respond with ONLY a JSON object:
     "business_type": "<string or null>",
     "pain_point": "<string or null>"
   }},
-  "discovery_complete": <true if goals, current_state, budget and timeline are all known, else false>
+  "discovery_complete": <true if goals, current_state, budget and timeline are all known, else false>,
+  "suggested_replies": ["<short option 1>", "<short option 2>", "..."]
 }}"""
 
 BRIEF_GENERATION_PROMPT = """You are producing the final project brief that the Abacus Digital sales team will read before their discovery call. Accuracy matters more than polish: never invent a fact the visitor did not give you.

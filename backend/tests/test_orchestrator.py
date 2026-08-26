@@ -58,6 +58,11 @@ async def test_question_uses_rag_and_persists_transcript(orchestrator, database,
     )
 
     session_id = await _new_session(database)
+    # First turn's suggestions get overwritten by the soft email ask — assert the
+    # follow-up chips on a second turn, once that one-time ask is out of the way.
+    await orchestrator.process_message(
+        ChatRequest(session_id=session_id, message="Hi there")
+    )
     response = await orchestrator.process_message(
         ChatRequest(session_id=session_id, message="Do you build B2B websites?")
     )
@@ -67,9 +72,12 @@ async def test_question_uses_rag_and_persists_transcript(orchestrator, database,
         "label": "Web Design & Development",
         "url": "https://www.abacusdigital.net/all-services/web-design",
     }
+    # A grounded answer always carries follow-up chips, tailored to its source
+    assert response.suggestions
+    assert "Web Design & Development" in response.suggestions[0]
 
     transcript = await database.get_session_transcript(session_id)
-    assert [t["role"] for t in transcript] == ["user", "assistant"]
+    assert [t["role"] for t in transcript] == ["user", "assistant", "user", "assistant"]
 
     # Interest is captured even though the visitor never entered qualification
     lead = await database.get_lead_by_session(session_id)
@@ -120,6 +128,59 @@ async def test_qualification_persists_partial_data_and_score(orchestrator, datab
     assert lead.budget_band == "5k_to_15k"
     # Score is written as data arrives, not only at the end (PRD 7.5)
     assert lead.qualification_score > 0
+
+
+@pytest.mark.asyncio
+async def test_suggestions_match_whatever_question_the_model_actually_asked(
+    orchestrator, database, monkeypatch
+):
+    """
+    Regression test: suggestion chips must come from the same model call that produced
+    the question, not a fixed field-order guess. Previously a model question about
+    social media / online presence could still get budget-band chips attached, because
+    chips were picked by "what field is structurally next" rather than by what was
+    actually asked.
+    """
+    from app import chat_orchestrator as mod
+
+    monkeypatch.setattr(
+        mod.intent_classifier, "classify",
+        lambda **kwargs: _as_coro({"intent": mod.Intent.QUALIFICATION, "confidence": 0.9}),
+    )
+    fake = FakeRouter(json_responses=[
+        {
+            "response": "Got it, thanks for sharing that.",
+            "extracted_data": {},
+            "enough_data_for_booking": False,
+            "suggested_replies": [],
+        },
+        {
+            "response": (
+                "Attracting more local customers is something a well-designed website can "
+                "help with. Do you currently have any online presence, like a social media "
+                "page or a listing on Google Maps?"
+            ),
+            "extracted_data": {"business_type": "retail", "pain_point": "not enough local customers"},
+            "enough_data_for_booking": False,
+            "suggested_replies": ["Yes, social media", "Yes, Google Maps", "No online presence yet"],
+        },
+    ])
+    monkeypatch.setattr("app.lead_qualifier.llm_router", fake)
+
+    session_id = await _new_session(database)
+    # First turn's suggestions get overwritten by the soft email ask — the mismatch bug
+    # only shows up once that one-time ask is out of the way.
+    await orchestrator.process_message(ChatRequest(
+        session_id=session_id, message="Hi, I run a local shop",
+    ))
+    response = await orchestrator.process_message(ChatRequest(
+        session_id=session_id,
+        message="Yes, that's exactly right",
+    ))
+
+    assert response.suggestions == ["Yes, social media", "Yes, Google Maps", "No online presence yet"]
+    # Must NOT have fallen back to budget-band chips, which don't match this question
+    assert "Under $1k" not in response.suggestions
 
 
 @pytest.mark.asyncio

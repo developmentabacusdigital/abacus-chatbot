@@ -19,6 +19,7 @@ from .llm_router import llm_router
 from .rag_engine import rag_engine
 from .models import ConversationState, ProjectBrief
 from .normalize import normalize_fields, normalize_budget, normalize_timeline
+from .suggestions import clean_suggestions, suggestions_for_field
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,7 @@ class IntakeAgent:
                 "response": self._fallback_question(state.intake_data),
                 "extracted": {},
                 "discovery_complete": False,
+                "suggestions": suggestions_for_field(self.next_missing_field(state.intake_data)),
                 "model_used": result["model_used"],
                 "cost": result["cost"],
             }
@@ -105,10 +107,17 @@ class IntakeAgent:
             data.get("discovery_complete", False)
         )
 
+        # Prefer the model's own suggestions — generated alongside the question it just
+        # asked, so they track it exactly instead of guessing from field order.
+        suggestions = clean_suggestions(data.get("suggested_replies"))
+        if not suggestions:
+            suggestions = suggestions_for_field(self.next_missing_field(state.intake_data))
+
         return {
             "response": data.get("response") or self._fallback_question(state.intake_data),
             "extracted": extracted,
             "discovery_complete": complete,
+            "suggestions": suggestions,
             "model_used": result["model_used"],
             "cost": result["cost"],
         }

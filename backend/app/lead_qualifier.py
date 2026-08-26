@@ -11,6 +11,7 @@ from .config import QUALIFICATION_PROMPT
 from .llm_router import llm_router
 from .models import ConversationState
 from .normalize import normalize_fields
+from .suggestions import clean_suggestions, suggestions_for_field
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,11 @@ INSTRUCTIONS:
 3. Ask about ONE missing field naturally (don't interrogate)
 4. If you have enough data (at least business_type + pain_point + one of budget/timeline), you can suggest booking a call
 5. Be empathetic and acknowledge what they share
+6. "suggested_replies" MUST match the question you just asked in "response" — 3-5 short
+   options a visitor could tap instead of typing. For a closed question (budget,
+   timeline, yes/no) give the actual answer choices. For an open question (pain point,
+   goals) give a few short example answers that illustrate the kind of reply you're
+   after. Never reuse suggestions from a different question than the one you just asked.
 
 Respond as a JSON object:
 {{
@@ -107,7 +113,8 @@ Respond as a JSON object:
         "email": "<if mentioned, else null>",
         "service_interest": "<if mentioned, else null>"
     }},
-    "enough_data_for_booking": <true|false>
+    "enough_data_for_booking": <true|false>,
+    "suggested_replies": ["<short option 1>", "<short option 2>", "..."]
 }}"""
 
         messages = [
@@ -137,6 +144,7 @@ Respond as a JSON object:
                 "qualification_score": state.qualification_score,
                 "is_qualified": state.is_qualified,
                 "should_offer_booking": False,
+                "suggestions": suggestions_for_field(self.next_missing_field(state.qualification_data)),
                 "model_used": result["model_used"],
                 "cost": result["cost"],
             }
@@ -159,12 +167,20 @@ Respond as a JSON object:
         enough_data = parsed.get("enough_data_for_booking", False)
         should_book = is_qualified and enough_data and not state.booking_offered
 
+        # Prefer the model's own suggestions — they're generated alongside the question
+        # it just asked, so they can't drift out of sync the way a field-order guess can.
+        # Fall back to the field-based catalog only if the model didn't give us anything usable.
+        suggestions = clean_suggestions(parsed.get("suggested_replies"))
+        if not suggestions:
+            suggestions = suggestions_for_field(self.next_missing_field(state.qualification_data))
+
         return {
             "response": parsed.get("response", "Could you tell me more about what you're looking for?"),
             "extracted_data": new_data,
             "qualification_score": score,
             "is_qualified": is_qualified,
             "should_offer_booking": should_book,
+            "suggestions": suggestions,
             "model_used": result["model_used"],
             "cost": result["cost"],
         }
