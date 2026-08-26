@@ -428,6 +428,9 @@ class ConversationState(BaseModel):
     email_capture_asked: bool = False
     email_capture_pending: bool = False
 
+    # Fires once per session, the moment both a name and an email are known
+    lead_notified: bool = False
+
     # AI-generated chat title (chat-list panel) and lead/query classification
     title: Optional[str] = None
     title_generated: bool = False

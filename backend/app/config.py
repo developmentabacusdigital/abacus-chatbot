@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     email_reply_to: str = "hello@abacusdigital.net"
     # When true, outbound follow-up emails queue for human approval instead of sending
     email_require_approval: bool = True
+    # Internal alert the moment a visitor's name + email are both known. Sent to the
+    # team, not the visitor, so it bypasses approval like an escalation does. Empty
+    # (default) disables the notification entirely.
+    lead_notification_email: str = ""
 
     # --- CRM mirror (7.4, optional) ---
     # provider: "airtable" | "hubspot" | "none"

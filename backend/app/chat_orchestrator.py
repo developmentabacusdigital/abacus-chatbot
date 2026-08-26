@@ -266,6 +266,7 @@ class ChatOrchestrator:
         )
 
         await self._update_category(state)
+        await self._maybe_notify_new_lead(state)
         generated_title = await self._maybe_generate_title(state)
 
         return ChatResponse(
@@ -397,6 +398,31 @@ class ChatOrchestrator:
         if category != state.category:
             state.category = category
             await db.update_session(state.session_id, category=category)
+
+    async def _maybe_notify_new_lead(self, state: ConversationState) -> None:
+        """
+        Fire once per session, the moment a visitor's name and email are both known —
+        checked after every turn so it fires regardless of which handler (soft capture,
+        booking gate, qualification, or intake) supplied the second of the two.
+        """
+        if state.lead_notified or not settings.lead_notification_email:
+            return
+
+        name = state.qualification_data.get("name") or state.intake_data.get("name")
+        email = state.qualification_data.get("email") or state.intake_data.get("email")
+        if not name or not is_valid_email(email or ""):
+            return
+
+        state.lead_notified = True
+        lead_data = {**state.qualification_data, **state.intake_data}
+        try:
+            await email_service.notify_new_lead(
+                to_email=settings.lead_notification_email,
+                lead_data=lead_data,
+                session_id=state.session_id,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send new-lead notification for {state.session_id}: {e}")
 
     async def _maybe_generate_title(self, state: ConversationState) -> Optional[str]:
         """Generate a short AI title for the chat-list panel, once, cheaply."""

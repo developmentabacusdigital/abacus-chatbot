@@ -292,6 +292,52 @@ The Abacus Digital team"""
             force_send=True,
         )
 
+    async def notify_new_lead(
+        self,
+        to_email: str,
+        lead_data: Dict[str, Any],
+        session_id: str,
+    ) -> EmailRecord:
+        """
+        Internal alert fired the moment a visitor's name and email are both known — a
+        snapshot of whatever's been gathered so far, not a customer-facing message, so
+        it bypasses approval the same way an escalation alert does.
+        """
+        def field(key: str) -> str:
+            value = lead_data.get(key)
+            if value in (None, "", "null"):
+                return "—"
+            if isinstance(value, list):
+                value = ", ".join(str(v) for v in value)
+            return str(value).replace("_", " ")
+
+        company_suffix = f" ({field('company')})" if lead_data.get("company") else ""
+
+        body = f"""A new lead just shared their contact details in the chatbot.
+
+Name: {field('name')}
+Email: {field('email')}
+Phone: {field('phone')}
+Company: {field('company')}
+Industry / business type: {field('business_type')}
+Requirement / pain point: {field('pain_point')}
+Goals: {field('goals')}
+Budget band: {field('budget_band')}
+Timeline: {field('timeline')}
+Decision maker: {field('decision_maker')}
+Service interest: {field('service_interest')}
+Qualification score: {field('qualification_score')}
+
+Session: {session_id}"""
+
+        return await self.queue(
+            to_email=to_email,
+            subject=f"New lead: {field('name')}{company_suffix}",
+            body=body,
+            session_id=session_id,
+            force_send=True,
+        )
+
     async def notify_escalation(
         self,
         manager_email: str,

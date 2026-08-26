@@ -172,6 +172,72 @@ async def test_booking_is_withheld_until_an_email_is_given(orchestrator, databas
 
 
 @pytest.mark.asyncio
+async def test_team_is_notified_once_name_and_email_are_both_known(
+    orchestrator, database, monkeypatch
+):
+    """
+    The internal lead-notification email should fire exactly once, the turn both a
+    name and an email become known — not before, and not again on a later turn.
+    """
+    from app import chat_orchestrator as mod
+
+    monkeypatch.setattr(mod.settings, "lead_notification_email", "sales@abacusdigital.net")
+
+    monkeypatch.setattr(
+        mod.intent_classifier, "classify",
+        lambda **kwargs: _as_coro({"intent": mod.Intent.PROJECT_INTAKE, "confidence": 0.9}),
+    )
+
+    async def fake_turn(message, state):
+        state.intake_data.update({"name": "Priya Shah", "business_type": "manufacturing"})
+        return {
+            "response": "Thanks Priya! What's your email so the team can follow up?",
+            "extracted": {"name": "Priya Shah", "business_type": "manufacturing"},
+            "discovery_complete": False,
+            "model_used": "fake", "cost": 0.001,
+        }
+
+    monkeypatch.setattr(mod.intake_agent, "run_turn", fake_turn)
+
+    session_id = await _new_session(database)
+    await orchestrator.process_message(ChatRequest(
+        session_id=session_id,
+        message="We're a manufacturing company, I'm Priya",
+    ))
+
+    # Name only so far — nothing sent yet
+    assert await database.get_emails() == []
+
+    async def fake_turn_with_email(message, state):
+        state.intake_data.update({"email": "priya@example.com"})
+        return {
+            "response": "Got it, thanks!",
+            "extracted": {"email": "priya@example.com"},
+            "discovery_complete": False,
+            "model_used": "fake", "cost": 0.001,
+        }
+
+    monkeypatch.setattr(mod.intake_agent, "run_turn", fake_turn_with_email)
+
+    await orchestrator.process_message(ChatRequest(
+        session_id=session_id,
+        message="priya@example.com",
+    ))
+
+    emails = await database.get_emails()
+    assert len(emails) == 1
+    assert emails[0].to_email == "sales@abacusdigital.net"
+    assert "Priya Shah" in emails[0].body
+
+    # A third turn must not send a second notification
+    await orchestrator.process_message(ChatRequest(
+        session_id=session_id,
+        message="Anything else I should know?",
+    ))
+    assert len(await database.get_emails()) == 1
+
+
+@pytest.mark.asyncio
 async def test_intake_completion_produces_and_stores_a_brief(orchestrator, database, monkeypatch):
     from app import chat_orchestrator as mod
     from app.models import ProjectBrief

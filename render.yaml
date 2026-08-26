@@ -43,6 +43,8 @@ services:
         sync: false
       - key: EMAIL_REQUIRE_APPROVAL
         value: "true"
+      - key: LEAD_NOTIFICATION_EMAIL
+        sync: false
       - key: CRM_PROVIDER
         value: none
       - key: AIRTABLE_API_KEY
