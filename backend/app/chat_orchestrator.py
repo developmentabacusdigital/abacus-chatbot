@@ -22,6 +22,7 @@ from .config import (
 )
 from .intent_classifier import intent_classifier
 from .rag_engine import rag_engine
+from .knowledge_base import linkify_services
 from .lead_qualifier import lead_qualifier, QUALIFICATION_THRESHOLD
 from .intake_agent import intake_agent, looks_like_project_request
 from .booking_handler import booking_handler
@@ -252,6 +253,9 @@ class ChatOrchestrator:
             state.email_capture_asked = True
             state.email_capture_pending = True
 
+        # Any service name the bot mentions, in any handler's text, becomes a real link
+        # to that service's page — applied once here rather than in every handler.
+        response_data["message"] = linkify_services(response_data["message"])
         response_data["message"] = content_guardrails.sanitize_output(response_data["message"])
         response_data["message"] = content_guardrails.check_commitment_language(
             response_data["message"]

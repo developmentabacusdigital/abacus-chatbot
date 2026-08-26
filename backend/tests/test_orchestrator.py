@@ -85,6 +85,37 @@ async def test_question_uses_rag_and_persists_transcript(orchestrator, database,
 
 
 @pytest.mark.asyncio
+async def test_service_names_in_bot_replies_become_real_links(orchestrator, database, monkeypatch):
+    """
+    Any service name the bot mentions in its own generated text — not just the
+    dedicated source_link — should turn into a markdown link to that service's real
+    page, wherever in the conversation it comes up.
+    """
+    from app import chat_orchestrator as mod
+
+    async def fake_answer(query, conversation_history=None, top_k=5):
+        return {
+            "answer": "Cybersecurity and Brand Identity would both help here.",
+            "sources": [], "source_link": None,
+            "model_used": "fake", "cost": 0.0002, "grounded": True,
+        }
+
+    monkeypatch.setattr(mod.rag_engine, "answer", fake_answer)
+    monkeypatch.setattr(
+        mod.intent_classifier, "classify",
+        lambda **kwargs: _as_coro({"intent": mod.Intent.QUESTION, "confidence": 0.9}),
+    )
+
+    session_id = await _new_session(database)
+    response = await orchestrator.process_message(
+        ChatRequest(session_id=session_id, message="What would help my business?")
+    )
+
+    assert "[Cybersecurity](https://www.abacusdigital.net/all-services/cybersecurity)" in response.message
+    assert "[Brand Identity](https://www.abacusdigital.net/all-services/brand-identity)" in response.message
+
+
+@pytest.mark.asyncio
 async def test_unsafe_input_is_never_stored(orchestrator, database):
     session_id = await _new_session(database)
 

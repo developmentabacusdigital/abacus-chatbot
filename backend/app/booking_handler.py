@@ -7,6 +7,7 @@ import logging
 from typing import Dict, Any
 
 from .config import settings
+from .knowledge_base import get_service_url
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +59,15 @@ The call is completely free, no obligations. We just want to make sure we're the
 
     def generate_self_serve_response(self, lead_data: Dict[str, Any]) -> str:
         """Generate a response for leads that don't yet qualify for booking."""
-        service = lead_data.get("service_interest", "")
+        # service_interest can be several comma-joined names (chat_orchestrator tracks
+        # every RAG source touched in a session) — link each one we recognize to its
+        # real page rather than dumping them all onto the generic services listing.
+        raw_services = [s.strip() for s in lead_data.get("service_interest", "").split(",") if s.strip()]
 
         resources = []
-        if service:
-            resources.append(f"• Check out our [{service}](https://www.abacusdigital.net/all-services) page for detailed information")
+        for name in raw_services[:3]:
+            url = get_service_url(name) or "https://www.abacusdigital.net/all-services"
+            resources.append(f"• Check out our [{name}]({url}) page for detailed information")
         resources.append("• Browse our [blog](https://www.abacusdigital.net/blog) for insights and case studies")
         resources.append("• Explore all our [services](https://www.abacusdigital.net/all-services) to find the right fit")
         resources.append(f"• When you're ready for a deeper conversation, you can always [book a call]({self.calendly_url})")

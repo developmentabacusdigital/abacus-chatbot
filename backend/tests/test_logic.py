@@ -10,6 +10,7 @@ from app.guardrails import content_guardrails, RateLimiter
 from app.site_crawler import SiteCrawler
 from app.knowledge_base import (
     get_knowledge_chunks, get_service_catalog_text, build_client_chunks,
+    linkify_services, get_service_url, SERVICE_URLS,
 )
 from app.email_service import EmailService, is_valid_email
 from app.models import Intent, ClientRecord, ClientProject, ProjectBrief
@@ -185,6 +186,32 @@ def test_service_catalog_lists_all_nine_capability_areas():
     for name in ("Web Design", "AI & Automation", "Cybersecurity", "Engineering",
                  "Brand Identity", "Software Solutions", "Digital Business Transformation"):
         assert name in catalog
+
+
+def test_linkify_services_turns_mentions_into_markdown_links():
+    text = "We recommend Brand Identity alongside Web Design & Development for this."
+    linked = linkify_services(text)
+    assert f"[Brand Identity]({SERVICE_URLS['Brand Identity']})" in linked
+    assert f"[Web Design & Development]({SERVICE_URLS['Web Design & Development']})" in linked
+
+
+def test_linkify_services_does_not_double_link_existing_markdown():
+    already_linked = "See [Cybersecurity](https://example.com/custom-link) for more."
+    result = linkify_services(already_linked)
+    # The existing link's URL must survive untouched, not get swapped for the real one
+    assert "https://example.com/custom-link" in result
+    assert result.count("[Cybersecurity]") == 1
+
+
+def test_linkify_services_ignores_capability_areas_with_no_dedicated_page():
+    text = "Software Solutions and Digital Business Transformation are also options."
+    linked = linkify_services(text)
+    assert linked == text  # no page exists for either, so nothing should change
+
+
+def test_get_service_url_returns_none_for_unknown_service():
+    assert get_service_url("Not A Real Service") is None
+    assert get_service_url("Cybersecurity") == SERVICE_URLS["Cybersecurity"]
 
 
 def test_crawler_only_indexes_public_paths():

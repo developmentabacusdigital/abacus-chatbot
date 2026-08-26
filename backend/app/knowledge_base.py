@@ -436,6 +436,41 @@ def get_service_line_names() -> List[str]:
     return list(ABACUS_KNOWLEDGE_BASE["company_overview"]["core_capabilities"])
 
 
+# Real page slugs pulled from the live sitemap (abacusdigital.net/sitemap.xml). Only
+# these 7 core service lines have a dedicated page — "Software Solutions" and "Digital
+# Business Transformation" are cross-service capability areas with no page of their own,
+# so a mention of either is simply left untouched by linkify_services below.
+SERVICE_URLS: Dict[str, str] = {
+    "Web Design & Development": "https://www.abacusdigital.net/all-services/web-design-and-development",
+    "AI & Automation": "https://www.abacusdigital.net/all-services/ai-agents-and-automation",
+    "Engineering Services": "https://www.abacusdigital.net/all-services/engineering-services",
+    "Cybersecurity": "https://www.abacusdigital.net/all-services/cybersecurity",
+    "Lead Generation & Performance Marketing": "https://www.abacusdigital.net/all-services/lead-generation-and-performance-marketing",
+    "Social Media Marketing & Management": "https://www.abacusdigital.net/all-services/social-media-marketing-management",
+    "Brand Identity": "https://www.abacusdigital.net/all-services/brand-identity",
+}
+
+
+def get_service_url(service_name: str) -> Optional[str]:
+    """Real page URL for an official service line, or None if it has no dedicated page."""
+    return SERVICE_URLS.get(service_name)
+
+
+def linkify_services(text: str) -> str:
+    """
+    Turn the first mention of each known service name in `text` into a markdown link to
+    its real page on the site. A name already sitting inside `[...]` (i.e. already
+    linked, or quoted as anchor text) is left alone, so running this on text that's
+    partly pre-linked — or re-running it — never double-wraps anything.
+    """
+    if not text:
+        return text
+    for name, url in SERVICE_URLS.items():
+        pattern = re.compile(r"(?<!\[)\b" + re.escape(name) + r"\b(?!\])")
+        text = pattern.sub(f"[{name}]({url})", text, count=1)
+    return text
+
+
 def build_client_chunks(client, projects) -> List[Dict[str, Any]]:
     """
     Build access-controlled chunks for the Phase 3 client knowledge base.
