@@ -132,9 +132,13 @@ def get_client_ip(request: Request) -> str:
 
 # ========== Health ==========
 
-@app.get("/", response_class=JSONResponse)
+@app.get("/")
 async def root():
-    return {"status": "ok", "service": "Abacus Digital Chatbot", "version": "1.0.0"}
+    """
+    The API root has no UI of its own — send visitors to the widget test page instead
+    of a bare JSON status blob. Machine checks should hit /health, not this route.
+    """
+    return RedirectResponse(url="/widget/")
 
 
 @app.get("/health")
