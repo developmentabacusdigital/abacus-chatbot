@@ -250,10 +250,16 @@ async def test_team_is_notified_once_name_and_email_are_both_known(
     )
 
     async def fake_turn(message, state):
-        state.intake_data.update({"name": "Priya Shah", "business_type": "manufacturing"})
+        state.intake_data.update({
+            "name": "Priya Shah", "business_type": "manufacturing",
+            "pain_point": "quoting takes too long",
+        })
         return {
             "response": "Thanks Priya! What's your email so the team can follow up?",
-            "extracted": {"name": "Priya Shah", "business_type": "manufacturing"},
+            "extracted": {
+                "name": "Priya Shah", "business_type": "manufacturing",
+                "pain_point": "quoting takes too long",
+            },
             "discovery_complete": False,
             "model_used": "fake", "cost": 0.001,
         }
@@ -289,6 +295,61 @@ async def test_team_is_notified_once_name_and_email_are_both_known(
     assert len(emails) == 1
     assert emails[0].to_email == "sales@abacusdigital.net"
     assert "Priya Shah" in emails[0].body
+    assert "quoting takes too long" in emails[0].body
+    # Score is computed fresh from whatever's known, never left blank
+    assert "Qualification score: —" not in emails[0].body
+
+
+@pytest.mark.asyncio
+async def test_lead_notification_waits_for_a_requirement_then_falls_back_to_a_summary(
+    orchestrator, database, monkeypatch
+):
+    """
+    If a requirement (pain point / goals) never naturally surfaces, the notification
+    must not fire on name+email alone with a blank requirement — it should wait a few
+    turns, then fall back to an auto-generated transcript summary rather than never
+    sending at all.
+    """
+    from app import chat_orchestrator as mod
+
+    monkeypatch.setattr(mod.settings, "lead_notification_email", "sales@abacusdigital.net")
+    monkeypatch.setattr(mod, "LEAD_NOTIFY_SUMMARY_FALLBACK_AFTER", 4)
+
+    monkeypatch.setattr(
+        mod.intent_classifier, "classify",
+        lambda **kwargs: _as_coro({"intent": mod.Intent.QUALIFICATION, "confidence": 0.9}),
+    )
+    fake = FakeRouter(json_responses=[
+        {
+            "response": "Nice to meet you, Sam!",
+            "extracted_data": {"name": "Sam", "email": "sam@example.com"},
+            "enough_data_for_booking": False,
+        },
+        {
+            "response": "Understood, thanks.",
+            "extracted_data": {},
+            "enough_data_for_booking": False,
+        },
+    ])
+    monkeypatch.setattr("app.lead_qualifier.llm_router", fake)
+
+    session_id = await _new_session(database)
+    await orchestrator.process_message(ChatRequest(
+        session_id=session_id, message="Hi, I'm Sam, my email is sam@example.com",
+    ))
+    # Name + email known, but no requirement yet, and below the turn threshold
+    assert await database.get_emails() == []
+
+    await orchestrator.process_message(ChatRequest(
+        session_id=session_id, message="Sure, sounds fine",
+    ))
+
+    emails = await database.get_emails()
+    assert len(emails) == 1
+    assert emails[0].to_email == "sales@abacusdigital.net"
+    # No real summary model is configured in tests, so the deterministic placeholder
+    # is what should have been used as the requirement.
+    assert "automatic summary unavailable" in emails[0].body
 
     # A third turn must not send a second notification
     await orchestrator.process_message(ChatRequest(

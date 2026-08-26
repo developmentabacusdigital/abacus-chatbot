@@ -45,6 +45,11 @@ MAX_CACHED_SESSIONS = 500
 # A chat only gets a title once it has at least this many turns of substance
 TITLE_MIN_MESSAGE_COUNT = 2
 
+# How many turns to give the conversation to naturally surface a requirement (pain
+# point / goals) before the lead-notification email falls back to an auto-summary
+# of the transcript instead of waiting indefinitely.
+LEAD_NOTIFY_SUMMARY_FALLBACK_AFTER = 6
+
 # Unlike the soft EMAIL_ASK earlier in a session, this one is mandatory: no Calendly
 # link goes out without somewhere to send the confirmation and calendar invite.
 BOOKING_EMAIL_ASK = (
@@ -404,9 +409,16 @@ class ChatOrchestrator:
 
     async def _maybe_notify_new_lead(self, state: ConversationState) -> None:
         """
-        Fire once per session, the moment a visitor's name and email are both known —
-        checked after every turn so it fires regardless of which handler (soft capture,
-        booking gate, qualification, or intake) supplied the second of the two.
+        Fire once per session, once name, email, a requirement, and a qualification
+        score are all in hand — checked after every turn so it fires regardless of
+        which handler (soft capture, booking gate, qualification, or intake) supplied
+        the missing piece.
+
+        "Requirement" comes from pain_point/goals/current_state if the conversation has
+        surfaced one; if it hasn't after a few turns, an auto-generated transcript
+        summary fills in instead rather than waiting indefinitely. Score is always
+        computed fresh from whatever's known — it's a weighted composite, so it's never
+        blank, just possibly low.
         """
         if state.lead_notified or not settings.lead_notification_email:
             return
@@ -416,8 +428,23 @@ class ChatOrchestrator:
         if not name or not is_valid_email(email or ""):
             return
 
-        state.lead_notified = True
         lead_data = {**state.qualification_data, **state.intake_data}
+        requirement = (
+            lead_data.get("pain_point") or lead_data.get("goals") or lead_data.get("current_state")
+        )
+
+        if not requirement:
+            if state.message_count < LEAD_NOTIFY_SUMMARY_FALLBACK_AFTER:
+                return  # give the conversation more turns to surface one naturally
+            summary = await self._summarize_session(state.session_id)
+            requirement = (summary or {}).get("summary")
+            if not requirement:
+                return  # nothing to report yet even via summary; try again next turn
+
+        state.lead_notified = True
+        lead_data["pain_point"] = requirement
+        lead_data["qualification_score"] = lead_qualifier.score_from_data(lead_data)
+
         try:
             await email_service.notify_new_lead(
                 to_email=settings.lead_notification_email,
