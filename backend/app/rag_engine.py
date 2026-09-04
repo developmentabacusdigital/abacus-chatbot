@@ -101,7 +101,7 @@ INSTRUCTIONS:
 - If the context doesn't fully answer the question, say what you know and note what's not covered
 - Cite which service or page your answer comes from
 - Keep your answer concise and helpful
-- If asked about pricing, give general guidance but note that exact quotes require a conversation with the team"""
+- If asked about pricing, never give a number or range — explain that it depends on scope and can only come from the team after a discovery call, and end that sentence with a single *"""
 
         messages = [{"role": "system", "content": system_prompt}]
         if conversation_history:

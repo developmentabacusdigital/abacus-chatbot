@@ -132,7 +132,26 @@ def test_accepts_ordinary_message():
 
 def test_pricing_claim_gets_a_disclaimer():
     out = content_guardrails.sanitize_output("It costs $2,000 per month.")
-    assert "exact pricing" in out.lower()
+    assert "pricing depends on your specific requirements" in out.lower()
+
+
+def test_dollar_figures_get_a_footnote_asterisk():
+    out = content_guardrails.sanitize_output("Typical projects run $5,000 to $15,000.")
+    assert "$5,000*" in out
+    assert "$15,000*" in out
+
+
+def test_pricing_topic_without_a_dollar_figure_still_gets_disclaimer():
+    # No number at all, but the model still shouldn't get away with dodging the
+    # disclaimer just because it phrased pricing without a literal "$" figure.
+    out = content_guardrails.sanitize_output("Our pricing depends on the scope of work.")
+    assert "team will give you an exact number" in out.lower()
+
+
+def test_disclaimer_is_not_duplicated_if_already_present():
+    out = content_guardrails.sanitize_output("It costs $2,000.")
+    out_again = content_guardrails.sanitize_output(out)
+    assert out_again.count("Pricing depends on your specific requirements") == 1
 
 
 def test_commitment_language_gets_a_disclaimer():

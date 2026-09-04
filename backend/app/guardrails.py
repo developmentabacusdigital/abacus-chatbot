@@ -105,22 +105,37 @@ class ContentGuardrails:
 
         return True, None
 
+    # Any dollar figure at all — the bot must never quote a price, so this isn't
+    # narrowed to "exact" pricing phrasing the way it used to be. Backstop for the
+    # system prompts' own "never give pricing" rule, not a replacement for it: an LLM
+    # can still slip past its instructions, so this catches whatever gets through.
+    _DOLLAR_AMOUNT = re.compile(r"\$\s?\d[\d,]*(?:\.\d+)?(?:\s?[kK])?\b(?!\*)")
+    _PRICE_TOPIC = re.compile(r"\b(?:quote|quotation|pricing|price|prices|cost|costs)\b", re.IGNORECASE)
+    _DISCLAIMER = (
+        "\n\n*Pricing depends on your specific requirements — the team will give you an "
+        "exact number after a discovery call."
+    )
+
     @staticmethod
     def sanitize_output(response: str) -> str:
         """
-        Sanitize bot output to enforce guardrails.
-        Catches any pricing commitments or unauthorized promises.
+        Backstop against a quotation slipping past the system prompt's "never give
+        pricing" rule: any dollar figure gets a footnote asterisk right where it
+        appears (rather than being silently deleted, which risks a broken sentence),
+        and any mention of pricing as a topic — figure or not — gets the disclaimer
+        appended once.
         """
-        # Check for exact pricing patterns that shouldn't be in responses
-        price_patterns = [
-            r'\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s*(?:per|/)',  # $X per/month
-            r'(?:costs?|price[ds]?|charge[ds]?)\s+(?:exactly|precisely)\s+\$',
-        ]
+        dollar_matches = list(ContentGuardrails._DOLLAR_AMOUNT.finditer(response))
+        if dollar_matches:
+            offset = 0
+            for m in dollar_matches:
+                insert_at = m.end() + offset
+                response = response[:insert_at] + "*" + response[insert_at:]
+                offset += 1
 
-        for pattern in price_patterns:
-            if re.search(pattern, response, re.IGNORECASE):
-                response += "\n\n*Note: Exact pricing depends on your specific requirements. The numbers mentioned are general ranges — please speak with our team for a detailed quote.*"
-                break
+        mentions_pricing = bool(dollar_matches) or bool(ContentGuardrails._PRICE_TOPIC.search(response))
+        if mentions_pricing and "Pricing depends on your specific requirements" not in response:
+            response += ContentGuardrails._DISCLAIMER
 
         return response
 

@@ -98,6 +98,10 @@ INSTRUCTIONS:
    timeline, yes/no) give the actual answer choices. For an open question (pain point,
    goals) give a few short example answers that illustrate the kind of reply you're
    after. Never reuse suggestions from a different question than the one you just asked.
+7. Never give a quotation, price, or numeric range for their project — asking about
+   their budget band is fine (that's for the team, not a quote from you), but if they
+   ask what it will cost, say pricing depends on scope and comes from the team on a
+   discovery call, and end that sentence with a single *.
 
 Respond as a JSON object:
 {{
